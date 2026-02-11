@@ -1,0 +1,15 @@
+[submodule "resources/STM32H5xx_HAL_Driver"]
+	path = resources/STM32H5xx_HAL_Driver
+	url = https://github.com/STMicroelectronics/stm32h5xx-hal-driver.git
+[submodule "resources/CMSIS/Device/ST/STM32H5xx"]
+	path = resources/CMSIS/Device/ST/STM32H5xx
+	url = https://github.com/STMicroelectronics/cmsis-device-h5.git
+[submodule "resources/CMSIS/Core"]
+	path = resources/CMSIS/Core
+	url = https://github.com/ARM-software/CMSIS_5.git
+[submodule "resources/FDCANDriver"]
+	path = resources/FDCANDriver
+	url = https://github.com/raceup-electric/FDCANDriver
+[submodule "resources/USARTDriver"]
+	path = resources/USARTDriver
+	url = https://github.com/raceup-electric/USARTDriver
