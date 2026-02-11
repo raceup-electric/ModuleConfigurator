@@ -1,0 +1,53 @@
+TARGET = {{ config.project_name }}
+BUILD_DIR = Build
+
+# Sources
+C_SOURCES =  \
+Src/main.c \
+Src/stm32h5xx_it.c \
+Src/raceup_msp.c \
+Src/system_stm32h5xx.c \
+{% for drv in drivers %}
+Src/{{ drv }}.c \
+{% endfor %}
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_cortex.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_rcc.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_rcc_ex.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_gpio.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_pwr.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_pwr_ex.c \
+{% if 'raceup_fdcan' in drivers %}
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_fdcan.c \
+{% endif %}
+{% if 'raceup_usart' in drivers %}
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_uart.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_uart_ex.c \
+{% endif %}
+
+ASM_SOURCES = \
+Startup/startup_stm32h563xx.s
+
+# Includes
+C_INCLUDES =  \
+-IInc \
+-IDrivers/STM32H5xx_HAL_Driver/Inc \
+-IDrivers/CMSIS/Device/Include \
+-IDrivers/CMSIS/Include
+
+# Compiler Flags
+MCU = -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard
+CFLAGS = $(MCU) $(C_INCLUDES) -Os -Wall -fdata-sections -ffunction-sections
+LDFLAGS = $(MCU) -TSTM32H563xx_FLASH.ld -Wl,-Map=$(BUILD_DIR)/$(TARGET).map,--cref -Wl,--gc-sections
+
+# Build Rules
+all: $(BUILD_DIR)/$(TARGET).elf $(BUILD_DIR)/$(TARGET).hex $(BUILD_DIR)/$(TARGET).bin
+
+$(BUILD_DIR)/$(TARGET).elf: $(C_SOURCES) $(ASM_SOURCES)
+	mkdir -p $(BUILD_DIR)
+	arm-none-eabi-gcc $(CFLAGS) $(LDFLAGS) $^ -o $@
+	arm-none-eabi-objcopy -O ihex $@ $(BUILD_DIR)/$(TARGET).hex
+	arm-none-eabi-objcopy -O binary $@ $(BUILD_DIR)/$(TARGET).bin
+
+clean:
+	rm -rf $(BUILD_DIR)

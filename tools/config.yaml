@@ -1,0 +1,28 @@
+project_name: "RaceUp_Example"
+mcu: "STM32H563"
+target_dir: "generated_proj"
+
+# System Clock Configuration (Passed to SystemClock_Config in main)
+clock:
+  pll_m: 8
+  pll_n: 250
+  pll_p: 2
+  pll_q: 2  # Critical for FDCAN
+  pll_r: 2
+
+# Peripheral Configuration
+modules:
+  fdcan1:
+    enable: true
+    rx_pin: {port: GPIOA, pin: GPIO_PIN_11, af: GPIO_AF9_FDCAN1}
+    tx_pin: {port: GPIOA, pin: GPIO_PIN_12, af: GPIO_AF9_FDCAN1}
+    irq_priority: 5
+    
+  usart1:
+    enable: true
+    baudrate: 115200
+    rx_pin: {port: GPIOA, pin: GPIO_PIN_10, af: GPIO_AF7_USART1}
+    tx_pin: {port: GPIOA, pin: GPIO_PIN_9,  af: GPIO_AF7_USART1}
+    irq_priority: 5
+
+  # Add more modules here as you build drivers (SPI, I2C, etc)
