@@ -2,6 +2,8 @@ import os
 import sys
 from jinja2 import Environment, FileSystemLoader
 
+import clock_prescaler
+
 #
 # ==============================================================================
 # 1. MAPPING TABLES & LOOKUPS
@@ -88,13 +90,6 @@ def resolve_filter_action(val):
     return FDCAN_FILTER_ACTION_MAP.get(val.lower(), "RUP_FDCAN_FILTER_REJECT")
 
 
-# Import the solver (Assumes 'clock_solver.py' exists in the same folder)
-try:
-    import config_solver as clock_solver
-except ImportError:
-    clock_solver = None
-    print("[WARN] 'config_solver.py' not found. Skipping clock calculations.")
-
 # Path to templates relative to this script
 MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_DIR = os.path.join(MODULE_DIR, "templates")
@@ -103,23 +98,16 @@ TEMPLATE_DIR = os.path.join(MODULE_DIR, "templates")
 def resolve_clock_tree(config):
     """
     Delegates clock tree calculation to the external solver module.
-    Updates the config object in-place with calculated register values.
     """
     print("\n--- [Phase 2] Resolving Clock Tree ---")
 
-    if clock_solver:
-        try:
-            # We assume the solver has a main entry point 'process_config'
-            # that accepts the config dict and returns the updated dict
-            # with calculated timings (prescalers, PLL registers, etc.)
-            config = clock_solver.process_config(config)
-            print("  [OK] Clock Tree Solved & Timings Calculated.")
-        except Exception as e:
-            print(f"  [ERR] Clock Solver Failed: {e}")
-            sys.exit(1)
-    else:
-        print("  [SKIP] Mocking resolution (Solver missing).")
-        # In a real scenario, you might inject default values here if solver is missing
+    try:
+        # Calls the function we defined in clock_prescaler.py
+        config = clock_prescaler.process_config(config)
+        print("  [OK] Clock Tree Solved & Timings Calculated.")
+    except Exception as e:
+        print(f"  [ERR] Clock Solver Failed: {e}")
+        sys.exit(1)
 
     return config
 

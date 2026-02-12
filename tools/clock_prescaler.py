@@ -1,4 +1,3 @@
-import yaml
 import sys
 
 # ==============================================================================
@@ -11,7 +10,7 @@ PLL_P_MIN, PLL_P_MAX = 1, 128
 PLL_Q_MIN, PLL_Q_MAX = 1, 128
 PLL_R_MIN, PLL_R_MAX = 1, 128
 
-# Optimal VCO Range (Based on provided example: 8MHz in -> 1000MHz VCO)
+# Optimal VCO Range (Ref Manual RM0481)
 VCO_IN_MIN, VCO_IN_MAX = 1000000, 16000000  # 1 MHz - 16 MHz
 VCO_OUT_MIN, VCO_OUT_MAX = 150000000, 1000000000  # 150 MHz - 1 GHz
 
@@ -20,7 +19,7 @@ CAN_PRESC_MAX = 512
 CAN_TS1_MAX = 256
 CAN_TS2_MAX = 128
 CAN_MIN_TQ = 8
-CAN_MAX_TQ = 80  # Conservative max (Standard allows up to 385 in some modes)
+CAN_MAX_TQ = 80
 
 
 # ==============================================================================
@@ -28,43 +27,39 @@ CAN_MAX_TQ = 80  # Conservative max (Standard allows up to 385 in some modes)
 # ==============================================================================
 def solve_pll(source_freq, targets):
     """
-    Finds M, N, P, Q, R to match target frequencies (p, q, r).
-    Prioritizes exact match for P (System Clock).
+    Finds M, N, P, Q, R to match target frequencies.
+    Returns a dict with registers (m, n, p, q, r) and actual frequencies.
     """
     best_solution = None
     min_error_score = float("inf")
 
-    # Iterate reasonable M values to get a valid VCO Input
+    # 1. Iterate M to get valid VCO Input
     for m in range(PLL_M_MIN, PLL_M_MAX + 1):
         vco_in = source_freq / m
-
-        # Constraint: VCO Input Frequency
         if not (VCO_IN_MIN <= vco_in <= VCO_IN_MAX):
             continue
 
-        # Iterate reasonable N values to get a valid VCO Output
+        # 2. Iterate N to get valid VCO Output
         for n in range(PLL_N_MIN, PLL_N_MAX + 1):
             vco_out = vco_in * n
-
-            # Constraint: VCO Output Frequency
             if not (VCO_OUT_MIN <= vco_out <= VCO_OUT_MAX):
                 continue
 
-            # Now check dividers P, Q, R
-            current_solution = {"m": m, "n": n, "vco_out": vco_out}
+            current_solution = {"regs": {"m": m, "n": n}, "freqs": {"vco_out": vco_out}}
+
             error_score = 0
             valid_pqr = True
 
+            # 3. Calculate Dividers P, Q, R
             for output_name, target_freq in targets.items():
-                if target_freq == 0:
-                    current_solution[output_name] = 1  # Dummy value
+                if not target_freq or target_freq == 0:
+                    current_solution["regs"][output_name] = 1  # Dummy valid value
+                    current_solution["freqs"][output_name] = 0
                     continue
 
-                # Calculate divider: Div = VCO / Target
-                # Must be integer
                 div = int(round(vco_out / target_freq))
 
-                # Check constraints
+                # Check divider limits
                 if div < 1 or div > 128:
                     valid_pqr = False
                     break
@@ -72,19 +67,18 @@ def solve_pll(source_freq, targets):
                 actual_freq = vco_out / div
                 error = abs(target_freq - actual_freq)
 
-                # Weight P (System Clock) error higher
+                # Heavily penalize P (System Clock) errors
                 weight = 100 if output_name == "p" else 1
                 error_score += error * weight
 
-                current_solution[output_name] = div
-                current_solution[f"freq_{output_name}"] = actual_freq
+                current_solution["regs"][output_name] = div
+                current_solution["freqs"][output_name] = actual_freq
 
             if valid_pqr:
                 if error_score < min_error_score:
                     min_error_score = error_score
                     best_solution = current_solution
 
-                # If perfect match, stop early
                 if min_error_score == 0:
                     return best_solution
 
@@ -97,153 +91,204 @@ def solve_pll(source_freq, targets):
 
 
 # ==============================================================================
-# FDCAN SOLVER
+# FDCAN SOLVER (Improved to mimic can-wiki / Kvaser logic)
 # ==============================================================================
-def solve_fdcan_timings(kernel_clock, target_baud, sample_point=0.875):
+def solve_fdcan_timings(kernel_clock, target_baud):
     """
     Calculates Prescaler, TimeSeg1, TimeSeg2 for a given baudrate.
+    Iterates through all valid prescalers to find the best Sample Point match.
     """
+    # STM32H5 FDCAN Nominal Bit Timing Constraints
+    # Prescaler: 1 to 512
+    # TimeSeg1: 1 to 256
+    # TimeSeg2: 1 to 128
+    # Total TQ: 1 (Sync) + TimeSeg1 + TimeSeg2
+
+    MIN_TQ = 8
+    MAX_TQ = 385  # 1 + 256 + 128
+    TARGET_SP = 0.875  # Target 87.5%
+
     best_error = 1.0
     best_cfg = None
 
-    # TQ = Prescaler / KernelClock
-    # BitTime = TQ * TotalTQ
-    # Baud = Kernel / (Presc * TotalTQ)
+    print(f"       [SOLVER] Solving {target_baud}bps @ {kernel_clock / 1e6:.2f}MHz")
 
-    # Iterate over possible Prescalers
-    for presc in range(1, CAN_PRESC_MAX + 1):
-        # Check if this prescaler produces an integer TotalTQ
-        # TotalTQ = Kernel / (Presc * Baud)
-        total_tq_float = kernel_clock / (presc * target_baud)
+    # Iterate ALL Prescalers (not just 1)
+    for presc in range(1, 512 + 1):
+        # Calculate ideal Total Time Quanta for this prescaler
+        # Baud = Clock / (Presc * TotalTQ) -> TotalTQ = Clock / (Presc * Baud)
+        tq_float = kernel_clock / (presc * target_baud)
+        tq_total = int(round(tq_float))
 
-        # Check for integer validity (with tolerance for float math)
-        if abs(total_tq_float - round(total_tq_float)) > 0.001:
+        # 1. Check if the clock divides cleanly (Integer Match)
+        if abs(tq_float - tq_total) > 0.01:
             continue
 
-        total_tq = int(round(total_tq_float))
-
-        if total_tq < CAN_MIN_TQ or total_tq > CAN_MAX_TQ:
+        # 2. Check hardware limits for Total TQ
+        if not (MIN_TQ <= tq_total <= MAX_TQ):
             continue
 
-        # Calculate Segments based on Sample Point
-        # SamplePoint = (1 + Seg1) / TotalTQ
-        # Seg1 = (SamplePoint * TotalTQ) - 1
+        # 3. Calculate Segments for Target Sample Point
+        # Seg1 = (TotalTQ * SP) - 1 (SyncSeg)
+        seg1 = int(round(tq_total * TARGET_SP)) - 1
+        seg2 = tq_total - 1 - seg1
 
-        seg1 = int(round(sample_point * total_tq)) - 1
-        seg2 = total_tq - 1 - seg1
-
-        # Check Segment Limits
-        if seg1 < 1 or seg1 > CAN_TS1_MAX:
-            continue
-        if seg2 < 1 or seg2 > CAN_TS2_MAX:
+        # 4. Check Segment limits
+        if (seg1 < 1 or seg1 > 256) or (seg2 < 1 or seg2 > 128):
             continue
 
-        # Calculate actual sample point
-        actual_sp = (1 + seg1) / total_tq
-        error = abs(actual_sp - sample_point)
+        # 5. Calculate Errors
+        actual_sp = (1 + seg1) / tq_total
+        sp_error = abs(TARGET_SP - actual_sp)
 
-        # Prioritize lower prescalers (higher resolution) if error is same
-        if error < best_error:
-            best_error = error
+        # 6. Selection Logic:
+        #    Strictly minimize Sample Point error.
+        #    If equal error, the loop order (low prescaler first) preserves
+        #    the higher resolution solution (which is technically superior).
+        if sp_error < best_error:
+            best_error = sp_error
             best_cfg = {
                 "prescaler": presc,
                 "ts1": seg1,
                 "ts2": seg2,
-                "sjw": 1,  # Standard
-                "total_tq": total_tq,
-                "actual_baud": kernel_clock / (presc * total_tq),
+                "sjw": max(1, min(seg2, 128)),  # SJW <= Seg2
+                "tq_total": tq_total,  # Stored for printing
                 "actual_sp": actual_sp,
+                "actual_baud": kernel_clock / (presc * tq_total),
             }
-            if error == 0:
-                break  # Perfect match found
 
-    return best_cfg
+            # If we hit the target exactly, we can technically stop or keep
+            # searching if you really preferred higher prescalers.
+            # For now, we take the first exact match (Highest Res).
+            if best_error == 0.0:
+                break
+
+    if best_cfg:
+        # Requested Printout
+        print(
+            f"         -> Found Solution: Prescaler={best_cfg['prescaler']}, "
+            f"TimeQuanta={best_cfg['tq_total']}, "
+            f"SamplePoint={best_cfg['actual_sp'] * 100:.2f}%"
+        )
+        return best_cfg
+
+    print(f"       [ERR] No valid FDCAN timings found for {target_baud}")
+    return None
 
 
 # ==============================================================================
-# MAIN LOGIC
+# MAIN PROCESSING
 # ==============================================================================
-def main():
-    try:
-        with open("config.yaml", "r") as f:
-            config = yaml.safe_load(f)
-    except FileNotFoundError:
-        print("Error: config.yaml not found.")
-        return
+def process_config(config):
+    """
+    Main entry point called by generate_templates.py.
+    Updates the config dict in-place with calculated values.
+    """
+    print("  [SOLVER] Starting Clock Tree Resolution...")
 
-    print("--- 1. Solving Clock Tree ---")
+    clk_cfg = config.get("clock_config", {})
+    sources = clk_cfg.get("sources", {})
 
-    # 1. Determine Source Frequency
-    clk_cfg = config["clock_config"]
-    src_type = "hsi"  # Default
-    if clk_cfg["sources"]["hse"].get("enable"):
-        src_type = "hse"
+    # 1. Solve PLLs
+    # --------------------------------------------------------------------------
+    # Dictionary to hold available frequencies for peripheral lookup later
+    available_clocks = {}
 
-    source_freq = clk_cfg["sources"][src_type]["frequency"]
-    print(f"Source: {src_type.upper()} @ {source_freq / 1e6:.2f} MHz")
+    for pll_name in ["pll1", "pll2"]:
+        pll_cfg = clk_cfg.get(pll_name)
+        if not pll_cfg:
+            continue
 
-    # 2. Solve PLL1
-    if clk_cfg.get("pll1", {}).get("enable"):
-        targets = clk_cfg["pll1"]["targets"]
+        # Even if enabled is False, we solve if targets exist (incase user toggles it later)
+        targets = pll_cfg.get("targets", {})
+        has_targets = any(v > 0 for v in targets.values())
+
+        if not has_targets:
+            continue
+
+        # Determine Input Source Frequency
+        src_name = pll_cfg.get("source", "hsi").lower()
+        if src_name not in sources:
+            print(
+                f"  [WARN] {pll_name} source '{src_name}' not found. Defaulting to HSI."
+            )
+            src_name = "hsi"
+
+        src_freq = sources[src_name]["frequency"]
+
         try:
-            pll1_sol = solve_pll(source_freq, targets)
-            print(f"\nPLL1 Solution (Source: {source_freq / 1e6} MHz):")
-            print(f"  M={pll1_sol['m']}, N={pll1_sol['n']}")
-            print(f"  P={pll1_sol['p']} -> {pll1_sol['freq_p'] / 1e6:.2f} MHz (System)")
-            print(f"  Q={pll1_sol['q']} -> {pll1_sol['freq_q'] / 1e6:.2f} MHz")
-            print(f"  R={pll1_sol['r']} -> {pll1_sol['freq_r'] / 1e6:.2f} MHz")
+            solution = solve_pll(src_freq, targets)
+
+            # Inject results into config
+            # Usage in Jinja: config.clock_config.pll1.regs.m
+            pll_cfg["regs"] = solution["regs"]
+            pll_cfg["calculated_freqs"] = solution["freqs"]
+
+            # MODIFIED PRINT STATEMENT
+            regs = solution["regs"]
+            print(
+                f"    -> Solved {pll_name.upper()}: M={regs['m']}, N={regs['n']}, "
+                f"P={regs.get('p', '-')}, Q={regs.get('q', '-')}, R={regs.get('r', '-')}"
+            )
+
+            # Store for peripheral lookup
+            available_clocks[f"{pll_name}p"] = solution["freqs"].get("p", 0)
+            available_clocks[f"{pll_name}q"] = solution["freqs"].get("q", 0)
+            available_clocks[f"{pll_name}r"] = solution["freqs"].get("r", 0)
+
         except ValueError as e:
-            print(f"Error: {e}")
+            print(f"    [ERR] {e}")
             sys.exit(1)
 
-    # 3. Solve FDCAN Timings
-    print("\n--- 2. Solving FDCAN Timings ---")
-
-    # Determine FDCAN Kernel Clock
-    # Config says: clock_source: RCC_FDCANCLKSOURCE_PLL2Q (or PLL1Q)
-    # We map the YAML string to the solved frequency.
-    # NOTE: Assuming config.yaml uses "PLL1Q" or "PLL2Q" logic.
-
-    # For this script, we assume FDCAN uses PLL1_Q or PLL2_Q.
-    # Let's check config to see where FDCAN gets its clock.
-    # In your config: shared_settings.fdcan_clock_source: RCC_FDCANCLKSOURCE_PLL2Q
-
-    # If PLL2 is not enabled in config, and FDCAN uses PLL2, we have an issue.
-    # But usually, if PLL2 is disabled, we fall back to PLL1Q.
-
-    # Let's assume FDCAN uses PLL1_Q for this calculation since PLL2 was disabled in your snippet.
-    # If you enable PLL2, you would solve PLL2 similarly to PLL1.
-
-    fdcan_kernel_freq = pll1_sol["freq_q"]  # Taking PLL1_Q as the source
-    print(f"FDCAN Kernel Clock: {fdcan_kernel_freq / 1e6:.2f} MHz")
-
+    # 2. Solve FDCAN Timings
+    # --------------------------------------------------------------------------
     modules = config.get("modules", {})
     fdcan_group = modules.get("fdcan", {})
 
-    if fdcan_group:
-        instances = fdcan_group.get("instances", {})
-        for name, inst in instances.items():
-            if not inst.get("enable"):
-                continue
+    if fdcan_group and fdcan_group.get("enable"):
+        # Determine Kernel Clock
+        clk_source_str = fdcan_group.get("clock_source", "").lower().replace("_", "")
+        kernel_freq = available_clocks.get(clk_source_str, 0)
 
-            baud = inst["speed"]
-            try:
-                timings = solve_fdcan_timings(fdcan_kernel_freq, baud)
+        if kernel_freq == 0:
+            print(
+                f"    [WARN] FDCAN source '{clk_source_str}' has 0Hz or is invalid. Skipping FDCAN calc."
+            )
+        else:
+            print(
+                f"    -> FDCAN Kernel Clock: {kernel_freq / 1e6:.2f} MHz (Source: {clk_source_str})"
+            )
+
+            instances = fdcan_group.get("instances", {})
+            for inst_name, inst in instances.items():
+                if not inst.get("enable"):
+                    continue
+
+                baud = inst.get("speed", 500000)
+                timings = solve_fdcan_timings(kernel_freq, baud)
 
                 if timings:
-                    print(f"\n  [{name.upper()}] Target: {baud} bps")
-                    print(f"    Prescaler: {timings['prescaler']}")
-                    print(f"    Seg1:      {timings['ts1']}")
-                    print(f"    Seg2:      {timings['ts2']}")
-                    print(f"    Sample Pt: {timings['actual_sp'] * 100:.1f}%")
+                    # Inject results into config
+                    # Usage in Jinja: config.modules.fdcan.instances.fdcan1.timings.prescaler
+                    inst["timings"] = timings
                     print(
-                        f"    Error:     {abs(baud - timings['actual_baud']):.2f} bps"
+                        f"       [{inst_name}] {baud}bps -> Presc: {timings['prescaler']}, Seg1: {timings['ts1']}, Seg2: {timings['ts2']}"
                     )
                 else:
-                    print(f"  [{name.upper()}] FAILED to find timings for {baud} bps")
-            except Exception as e:
-                print(f"  Error calculating {name}: {e}")
+                    print(
+                        f"       [ERR] Failed to find FDCAN timings for {inst_name} @ {baud}"
+                    )
+
+    return config
 
 
 if __name__ == "__main__":
-    main()
+    # Test stub for standalone execution
+    import yaml
+
+    try:
+        with open("config.yaml", "r") as f:
+            cfg = yaml.safe_load(f)
+            process_config(cfg)
+    except FileNotFoundError:
+        print("config.yaml not found for testing.")
