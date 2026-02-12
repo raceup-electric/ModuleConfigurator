@@ -100,7 +100,7 @@ extern "C" {
   *        (when HSE is used as system clock source, directly or through the PLL).
   */
 #if !defined  (HSE_VALUE)
-#define HSE_VALUE              {{ config.clock_config.hse.frequency }}UL /*!< Value of the External oscillator in Hz */
+#define HSE_VALUE              {{ config.clock_config.sources.hse.frequency }}UL /*!< Value of the External oscillator in Hz */
 #endif /* HSE_VALUE */
 
 #if !defined  (HSE_STARTUP_TIMEOUT)
@@ -122,8 +122,8 @@ extern "C" {
   *        (when HSI is used as system clock source, directly or through the PLL).
   */
 #if !defined  (HSI_VALUE)
-{% if config.clock_config.hsi.frequency is defined %}
-#define HSI_VALUE              {{ config.clock_config.hsi.frequency }}UL /*!< Value of the Internal oscillator in Hz*/
+{% if config.clock_config.sources.hsi.frequency is defined %}
+#define HSI_VALUE              {{ config.clock_config.sources.hsi.frequency }}UL /*!< Value of the Internal oscillator in Hz*/
 {% else %}
 #error "HSI frequency must be specified in config.yaml"
 {% endif %}
