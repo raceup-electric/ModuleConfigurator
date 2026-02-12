@@ -2,6 +2,92 @@ import os
 import sys
 from jinja2 import Environment, FileSystemLoader
 
+#
+# ==============================================================================
+# 1. MAPPING TABLES & LOOKUPS
+# ==============================================================================
+# Map simplified strings to C Macros
+FDCAN_FILTER_TYPE_MAP = {
+    "range": "RUP_FDCAN_FILTER_RANGE",
+    "dual": "RUP_FDCAN_FILTER_DUAL",
+    "mask": "RUP_FDCAN_FILTER_MASK",
+}
+
+FDCAN_FILTER_ACTION_MAP = {
+    "fifo0": "RUP_FDCAN_FILTER_TO_RXFIFO0",
+    "fifo1": "RUP_FDCAN_FILTER_TO_RXFIFO1",
+    "reject": "RUP_FDCAN_FILTER_REJECT",
+    "fifo0_hp": "RUP_FDCAN_FILTER_RXFIFO0_HP",
+    "fifo1_hp": "RUP_FDCAN_FILTER_RXFIFO1_HP",
+}
+
+FDCAN_SPEED_MAP = {
+    "125000": "RUP_FDCAN_NOMINAL_BR_125",
+    "250000": "RUP_FDCAN_NOMINAL_BR_250",
+    "500000": "RUP_FDCAN_NOMINAL_BR_500",
+    "1000000": "RUP_FDCAN_NOMINAL_BR_1000",
+}
+
+FDCAN_RXITMODE_MAP = {
+    "none": "RUP_FDCAN_IT_NONE",
+    "fifo0": "RUP_FDCAN_IT_RX_FIFO0",
+    "fifo1": "RUP_FDCAN_IT_RX_FIFO1",
+    "all": "RUP_FDCAN_IT_ALL",
+}
+
+# Database for Alternate Functions (since they are removed from Config)
+# Key: (Instance Name, Pin Name) -> Value: AF Macro
+AF_DATABASE = {
+    # FDCAN1
+    ("FDCAN1", "PA11"): "GPIO_AF9_FDCAN1",
+    ("FDCAN1", "PA12"): "GPIO_AF9_FDCAN1",
+    ("FDCAN1", "PB12"): "GPIO_AF9_FDCAN1",  # Example alternative
+    # FDCAN2
+    ("FDCAN2", "PB12"): "GPIO_AF9_FDCAN2",
+    ("FDCAN2", "PB13"): "GPIO_AF9_FDCAN2",
+    # USART1
+    ("USART1", "PA9"): "GPIO_AF7_USART1",
+    ("USART1", "PA10"): "GPIO_AF7_USART1",
+}
+
+
+# ==============================================================================
+# 2. PARSING HELPERS (Jinja Filters)
+# ==============================================================================
+def parse_gpio_port(pin_str):
+    """'A11' -> 'GPIOA'"""
+    if not pin_str:
+        return "GPIO_NULL"
+    port_char = pin_str[0].upper()
+    return f"GPIO{port_char}"
+
+
+def parse_gpio_pin(pin_str):
+    """'A11' -> 'GPIO_PIN_11'"""
+    if not pin_str:
+        return "GPIO_PIN_NULL"
+    # Extract numbers from the end of the string
+    pin_num = "".join(filter(str.isdigit, pin_str))
+    return f"GPIO_PIN_{pin_num}"
+
+
+def resolve_af(pin_str, instance_name):
+    """
+    Looks up the AF based on Instance + Pin.
+    Usage in template: {{ module.pins.rx | resolve_af('FDCAN1') }}
+    """
+    key = (instance_name.upper(), f"P{pin_str.upper()}")  # Normalize to PA11
+    return AF_DATABASE.get(key, f"GPIO_AF_UNKNOWN_{instance_name}_{pin_str}")
+
+
+def resolve_filter_type(val):
+    return FDCAN_FILTER_TYPE_MAP.get(val.lower(), "RUP_FDCAN_FILTER_RANGE")
+
+
+def resolve_filter_action(val):
+    return FDCAN_FILTER_ACTION_MAP.get(val.lower(), "RUP_FDCAN_FILTER_REJECT")
+
+
 # Import the solver (Assumes 'clock_solver.py' exists in the same folder)
 try:
     import config_solver as clock_solver
@@ -70,6 +156,15 @@ def generate_project_files(config, target_dir):
         sys.exit(1)
 
     env = Environment(loader=FileSystemLoader(TEMPLATE_DIR))
+    env.trim_blocks = True
+    env.lstrip_blocks = True
+
+    # REGISTER CUSTOM FILTERS
+    env.filters["gpio_port"] = parse_gpio_port
+    env.filters["gpio_pin"] = parse_gpio_pin
+    env.filters["af_lookup"] = resolve_af
+    env.filters["filter_type"] = resolve_filter_type
+    env.filters["filter_action"] = resolve_filter_action
 
     # 3. Define Template Mapping { TemplateFile : OutputPathRelative }
     # You can add more files here easily

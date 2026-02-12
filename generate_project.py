@@ -33,7 +33,7 @@ def main():
 
     # 2. Determine Output Directory
     # Output is placed one level above the 'tools' directory
-    output_root = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
+    output_root = os.path.abspath(os.path.join(SCRIPT_DIR, "."))
     project_path = os.path.join(output_root, project_name)
 
     print(f"Project Name:   {project_name}")
