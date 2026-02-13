@@ -19,7 +19,7 @@
 /* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
-// #include "main.h"
+#include "main.h"
 {% if config.mcu.family is defined %}
 #include "{{ config.mcu.family|lower }}_it.h"
 {% else %}

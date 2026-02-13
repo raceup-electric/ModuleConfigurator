@@ -22,6 +22,53 @@ CAN_MIN_TQ = 8
 CAN_MAX_TQ = 80
 
 
+def get_pll_ranges(m, src_freq, vco_out):
+    """
+    Determines PLL Input Range (RGE) and VCO Range (VCOSEL).
+    Returns tuple (rge_idx, vco_str)
+    """
+    # 1. Input Range (RGE) based on Ref Clock (Src / M)
+    ref_clk = src_freq / m
+    if 1000000 <= ref_clk < 2000000:
+        rge = 0  # Range 0 (1-2 MHz)
+    elif 2000000 <= ref_clk < 4000000:
+        rge = 1  # Range 1 (2-4 MHz)
+    elif 4000000 <= ref_clk < 8000000:
+        rge = 2  # Range 2 (4-8 MHz)
+    else:
+        rge = 3  # Range 3 (8-16 MHz)
+
+    # 2. VCO Range (VCOSEL)
+    # Medium: 150 - 420 MHz
+    # Wide:   192 - 836 MHz (Required for >420 MHz)
+    if vco_out > 420000000:
+        vco = "WIDE"
+    else:
+        vco = "MEDIUM"
+
+    return rge, vco
+
+
+def get_flash_latency(sys_clk):
+    """
+    Returns the Flash Latency macro for VOS0 based on System Clock.
+    Data from STM32H5 Reference Manual (VOS0 Range).
+    """
+    # VOS0 Wait States
+    if sys_clk <= 42000000:
+        return "FLASH_LATENCY_0"
+    elif sys_clk <= 84000000:
+        return "FLASH_LATENCY_1"
+    elif sys_clk <= 126000000:
+        return "FLASH_LATENCY_2"
+    elif sys_clk <= 168000000:
+        return "FLASH_LATENCY_3"
+    elif sys_clk <= 210000000:
+        return "FLASH_LATENCY_4"
+    else:
+        return "FLASH_LATENCY_5"  # Max for 250MHz
+
+
 # ==============================================================================
 # PLL SOLVER
 # ==============================================================================
@@ -77,6 +124,14 @@ def solve_pll(source_freq, targets):
             if valid_pqr:
                 if error_score < min_error_score:
                     min_error_score = error_score
+
+                    # Calculate Ranges for this solution
+                    rge, vco = get_pll_ranges(m, source_freq, vco_out)
+
+                    # Update best solution with new range params
+                    current_solution["regs"]["rge"] = rge
+                    current_solution["regs"]["vco"] = vco
+
                     best_solution = current_solution
 
                 if min_error_score == 0:
@@ -231,6 +286,14 @@ def process_config(config):
                 f"P={regs.get('p', '-')}, Q={regs.get('q', '-')}, R={regs.get('r', '-')}"
             )
 
+            pll_cfg["regs"] = solution["regs"]
+            pll_cfg["calculated_freqs"] = solution["freqs"]
+
+            # Inject calculated RGE/VCO for user visibility (optional debug print)
+            print(
+                f"       -> RGE={solution['regs']['rge']}, VCO={solution['regs']['vco']}"
+            )
+
             # Store for peripheral lookup
             available_clocks[f"{pll_name}p"] = solution["freqs"].get("p", 0)
             available_clocks[f"{pll_name}q"] = solution["freqs"].get("q", 0)
@@ -239,6 +302,22 @@ def process_config(config):
         except ValueError as e:
             print(f"    [ERR] {e}")
             sys.exit(1)
+
+    sysclk_src = (
+        config.get("clock_config", {}).get("buses", {}).get("sysclk_source", "").lower()
+    )
+
+    sys_freq = 0
+    if "pll" in sysclk_src:  # Assumes PLL1 P
+        sys_freq = available_clocks.get("pll1p", 0)
+    elif "hsi" in sysclk_src:
+        sys_freq = 64000000
+    elif "hse" in sysclk_src:
+        sys_freq = sources.get("hse", {}).get("frequency", 0)
+
+    latency_macro = get_flash_latency(sys_freq)
+    config["clock_config"]["buses"]["flash_latency"] = latency_macro
+    print(f"    -> System Freq: {sys_freq / 1e6:.1f} MHz | Latency: {latency_macro}")
 
     # 2. Solve FDCAN Timings
     # --------------------------------------------------------------------------

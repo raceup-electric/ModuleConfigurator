@@ -1,6 +1,12 @@
 TARGET = {{ config.project_name }}
 BUILD_DIR = Build
 
+# 1. C Defines (CRITICAL FIX)
+# Defines the specific chip part number for the HAL headers
+C_DEFS =  \
+-D{{ config.mcu.part_number }} \
+-DUSE_HAL_DRIVER
+
 # Sources
 C_SOURCES =  \
 Src/main.c \
@@ -25,29 +31,58 @@ Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_uart.c \
 Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_uart_ex.c \
 {% endif %}
 
+# Startup file (Dynamic based on config)
 ASM_SOURCES = \
-Startup/startup_stm32h563xx.s
+Startup/startup_{{ config.mcu.part_number | lower }}.s
 
 # Includes
 C_INCLUDES =  \
 -IInc \
 -IDrivers/STM32H5xx_HAL_Driver/Inc \
--IDrivers/CMSIS/Device/Include \
+-IDrivers/CMSIS/Device/ST/{{ config.mcu.family }}/Include \
 -IDrivers/CMSIS/Include
 
 # Compiler Flags
 MCU = -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard
-CFLAGS = $(MCU) $(C_INCLUDES) -Os -Wall -fdata-sections -ffunction-sections
-LDFLAGS = $(MCU) -TSTM32H563xx_FLASH.ld -Wl,-Map=$(BUILD_DIR)/$(TARGET).map,--cref -Wl,--gc-sections
+# Added $(C_DEFS) and dependency generation flags (-MMD -MP)
+CFLAGS = $(MCU) $(C_DEFS) $(C_INCLUDES) -Os -Wall -fdata-sections -ffunction-sections -MMD -MP
+
+# Linker Script (Dynamic based on config)
+LDFLAGS = $(MCU) -T{{ config.mcu.part_number }}_FLASH.ld -Wl,-Map=$(BUILD_DIR)/$(TARGET).map,--cref -Wl,--gc-sections
 
 # Build Rules
+# Generate object list from sources
+OBJECTS = $(addprefix $(BUILD_DIR)/,$(notdir $(C_SOURCES:.c=.o)))
+vpath %.c $(sort $(dir $(C_SOURCES)))
+OBJECTS += $(addprefix $(BUILD_DIR)/,$(notdir $(ASM_SOURCES:.s=.o)))
+vpath %.s $(sort $(dir $(ASM_SOURCES)))
+
 all: $(BUILD_DIR)/$(TARGET).elf $(BUILD_DIR)/$(TARGET).hex $(BUILD_DIR)/$(TARGET).bin
 
-$(BUILD_DIR)/$(TARGET).elf: $(C_SOURCES) $(ASM_SOURCES)
-	mkdir -p $(BUILD_DIR)
-	arm-none-eabi-gcc $(CFLAGS) $(LDFLAGS) $^ -o $@
+# Rule for C sources
+$(BUILD_DIR)/%.o: %.c Makefile | $(BUILD_DIR)
+	arm-none-eabi-gcc -c $(CFLAGS) -Wa,-a,-ad,-alms=$(BUILD_DIR)/$(notdir $(<:.c=.lst)) $< -o $@
+
+# Rule for ASM sources
+$(BUILD_DIR)/%.o: %.s Makefile | $(BUILD_DIR)
+	arm-none-eabi-gcc -c $(CFLAGS) $< -o $@
+
+# Rule for Linking
+$(BUILD_DIR)/$(TARGET).elf: $(OBJECTS)
+	arm-none-eabi-gcc $(OBJECTS) $(LDFLAGS) -o $@
+	arm-none-eabi-size $@
+
+$(BUILD_DIR)/$(TARGET).hex: $(BUILD_DIR)/$(TARGET).elf
 	arm-none-eabi-objcopy -O ihex $@ $(BUILD_DIR)/$(TARGET).hex
+
+$(BUILD_DIR)/$(TARGET).bin: $(BUILD_DIR)/$(TARGET).elf
 	arm-none-eabi-objcopy -O binary $@ $(BUILD_DIR)/$(TARGET).bin
+
+$(BUILD_DIR):
+	mkdir -p $@
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+# Include dependencies
+-include $(OBJECTS:.o=.d)

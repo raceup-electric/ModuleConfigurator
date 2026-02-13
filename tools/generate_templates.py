@@ -158,11 +158,12 @@ def generate_project_files(config, target_dir):
     # You can add more files here easily
     templates_map = {
         "Makefile.jinja": "Makefile",
-        # "Src/main.c.jinja": "Src/main.c",
-        # "Src/raceup_msp.c.jinja": "Src/raceup_msp.c",
+        "Src/main.c.jinja": "Src/main.c",
+        "Src/raceup_msp.c.jinja": "Src/raceup_msp.c",
         "Src/stm32h5xx_it.c.jinja": "Src/stm32h5xx_it.c",
-        # "Inc/main.h": "Inc/main.h",  # Static or Jinja
-        "Inc/stm32h5xx_hal_conf.h.jinja": "Inc/stm32h5xx_hal_conf.h",  # Static or Jinja
+        "Inc/main.h.jinja": "Inc/main.h",
+        "Inc/stm32h5xx_hal_conf.h.jinja": "Inc/stm32h5xx_hal_conf.h",
+        "Inc/stm32h5xx_it.h": "Inc/stm32h5xx_it.h",
     }
 
     # 4. Render All

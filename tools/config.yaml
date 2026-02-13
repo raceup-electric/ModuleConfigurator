@@ -42,7 +42,7 @@ clock_config:
   # Optional: PLL2 for Peripherals (FDCAN, UART, etc.)
   # Defined similarly if needed, otherwise 'enable: false'
   pll2:
-    enable: false
+    enable: true
     source: HSE
     targets:
       p: 0                  # 0 = Unused/Don't Care
@@ -90,6 +90,8 @@ modules:
         # Types: RANGE, DUAL, MASK
         # Configs: TO_RXFIFO0, TO_RXFIFO1, REJECT, RXFIFO0_HP, RXFIFO1_HP
         filters:
+          - type: global
+            action: fifo0
           - type: range
             action: fifo0
             id1: 0x100
