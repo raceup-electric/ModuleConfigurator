@@ -82,8 +82,8 @@ modules:
         enable: true
         speed: 500000         # Target Bitrate: 500 kBit/s
         pins:
-          rx: A11
-          tx: A12
+          rx: D0
+          tx: D1
         interrupts:
           it0: { priority: 5, subpriority: 0 }
         
@@ -102,7 +102,7 @@ modules:
             id2: 0x7F0       # Mask
 
       fdcan2:
-        enable: true
+        enable: false
         speed: 1000000
         pins:
           rx: B12
@@ -118,7 +118,7 @@ modules:
 
   # --- USART GROUP ---
   usart:
-    enable: true
+    enable: false
     clock_source: pll2q
     instances:
       usart1:
@@ -138,3 +138,20 @@ modules:
           tx: D8
         interrupts:
           global: { priority: 7, subpriority: 0 }
+
+  gpio:
+    - name: "yellow_led"
+      pin: F4
+      mode: output_pp
+      pull: nopull
+      speed: low
+    - name: "red_led"
+      pin: G4
+      mode: output_pp
+      pull: nopull
+      speed: low
+    - name: "green_led"
+      pin: B0
+      mode: output_pp
+      pull: nopull
+      speed: low

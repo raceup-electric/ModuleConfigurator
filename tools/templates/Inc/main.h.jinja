@@ -20,6 +20,15 @@ extern "C" {
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32h5xx_hal.h"
+#include "raceup_setup.h"
+
+/* Includes for Enabled Modules */
+{% if config.modules.fdcan.enable %}
+#include "raceup_fdcan.h"
+{% endif %}
+{% if config.modules.usart.enable %}
+#include "raceup_usart.h"
+{% endif %}
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -49,22 +58,10 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-{% for module_name, module_config in config.modules.items() %}
-{% if module_config.enable %}
-/* {{ module_name | upper }} Definitions */
-{% for instance_name, instance_config in module_config.instances.items() %}
-{% if instance_config.enable %}
-/* {{ instance_name | upper }} Pins */
-{% for pin_func, pin_name in instance_config.pins.items() %}
-{% set port_char = pin_name[0] %}
-{% set pin_num = pin_name[1:] %}
-#define {{ instance_name | upper }}_{{ pin_func | upper }}_Pin GPIO_PIN_{{ pin_num }}
-#define {{ instance_name | upper }}_{{ pin_func | upper }}_GPIO_Port GPIO{{ port_char }}
-{% endfor %}
-
-{% endif %}
-{% endfor %}
-{% endif %}
+{% for gpio_inst in config.modules.gpio %}
+{% set pin = gpio_inst.pin %}
+#define {{ gpio_inst.name | upper }}_PIN {{ pin | gpio_pin }}
+#define {{ gpio_inst.name | upper }}_BANK {{ pin | gpio_bank }}
 {% endfor %}
 
 /* USER CODE BEGIN Private defines */

@@ -1,88 +1,146 @@
+################################################################################
+# Makefile for {{ config.project_name }} Project
+################################################################################
+
+# 1. Project Name and Target
 TARGET = {{ config.project_name }}
+
+# 2. Build Paths
 BUILD_DIR = Build
 
-# 1. C Defines (CRITICAL FIX)
-# Defines the specific chip part number for the HAL headers
-C_DEFS =  \
--D{{ config.mcu.part_number }} \
--DUSE_HAL_DRIVER
+# 3. Debugging and Optimization
+DEBUG = 1
+OPT = -Og
 
-# Sources
+# 4. Source Files
+{% set modules = config.modules %}
+# User sources
 C_SOURCES =  \
 Src/main.c \
 Src/stm32h5xx_it.c \
-Src/raceup_msp.c \
 Src/system_stm32h5xx.c \
-{% for drv in drivers %}
-Src/{{ drv }}.c \
-{% endfor %}
+Src/sysmem.c \
+Src/syscalls.c \
+Src/raceup_setup.c \
+{% if modules.fdcan.enable == true %}
+Src/raceup_fdcan.c \
+{% endif %}
+{% if modules.usart.enable == true %}
+Src/raceup_usart.c \
+{% endif %}
+
+# HAL Driver sources
+C_SOURCES += \
 Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal.c \
 Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_cortex.c \
 Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_rcc.c \
 Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_rcc_ex.c \
 Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_gpio.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_dma.c \
 Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_pwr.c \
 Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_pwr_ex.c \
-{% if 'raceup_fdcan' in drivers %}
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_flash.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_flash_ex.c \
+{% if modules.fdcan.enable == true %}
 Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_fdcan.c \
 {% endif %}
-{% if 'raceup_usart' in drivers %}
+{% if modules.usart.enable == true  %}
 Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_uart.c \
 Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_uart_ex.c \
 {% endif %}
 
 # Startup file (Dynamic based on config)
-ASM_SOURCES = \
+ASM_SOURCES =  \
 Startup/startup_{{ config.mcu.part_number | lower }}.s
 
-# Includes
-C_INCLUDES =  \
--IInc \
--IDrivers/STM32H5xx_HAL_Driver/Inc \
--IDrivers/CMSIS/Device/ST/{{ config.mcu.family }}/Include \
--IDrivers/CMSIS/Include
-
-# Compiler Flags
-MCU = -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard
-# Added $(C_DEFS) and dependency generation flags (-MMD -MP)
-CFLAGS = $(MCU) $(C_DEFS) $(C_INCLUDES) -Os -Wall -fdata-sections -ffunction-sections -MMD -MP
-
-# Linker Script (Dynamic based on config)
-LDFLAGS = $(MCU) -T{{ config.mcu.part_number }}_FLASH.ld -Wl,-Map=$(BUILD_DIR)/$(TARGET).map,--cref -Wl,--gc-sections
-
-# Build Rules
-# Generate object list from sources
+# List object files
 OBJECTS = $(addprefix $(BUILD_DIR)/,$(notdir $(C_SOURCES:.c=.o)))
 vpath %.c $(sort $(dir $(C_SOURCES)))
 OBJECTS += $(addprefix $(BUILD_DIR)/,$(notdir $(ASM_SOURCES:.s=.o)))
 vpath %.s $(sort $(dir $(ASM_SOURCES)))
 
+# 5. Binaries and Tools
+PREFIX = arm-none-eabi-
+CC = $(PREFIX)gcc
+AS = $(PREFIX)gcc -x assembler-with-cpp
+CP = $(PREFIX)objcopy
+SZ = $(PREFIX)size
+HEX = $(CP) -O ihex
+BIN = $(CP) -O binary -S
+STM32PRG = STM32_Programmer_CLI --verbosity 1 -c port=swd mode=HOTPLUG speed=Reliable
+
+# 6. MCU Flags (Cortex-M33)
+CPU = -mcpu=cortex-m33
+FPU = -mfpu=fpv5-sp-d16
+FLOAT-ABI = -mfloat-abi=hard
+MCU = $(CPU) -mthumb $(FPU) $(FLOAT-ABI)
+
+# 7. Macros and Defines
+C_DEFS =  \
+-D{{ config.mcu.part_number }} \
+-DUSE_HAL_DRIVER \
+-DHSE_VALUE=8000000L
+
+# 8. Includes
+C_INCLUDES =  \
+-IInc \
+-IDrivers/CMSIS/Device/ST/{{ config.mcu.family }}/Include \
+-IDrivers/CMSIS/Include \
+-IDrivers/STM32H5xx_HAL_Driver/Inc
+
+# 9. Compiler Flags (Added -MMD -MP for dependency generation)
+CFLAGS = $(MCU) $(C_DEFS) $(C_INCLUDES) $(OPT) -Wall -fdata-sections -ffunction-sections -MMD -MP
+
+ifneq ($(DEBUG), 0)
+CFLAGS += -g -gdwarf-2
+endif
+
+# 10. Linker Flags
+LDSCRIPT = {{ config.mcu.part_number }}_FLASH.ld
+LIBS = -lc -lm -lnosys 
+LDFLAGS = $(MCU) -specs=nano.specs -T$(LDSCRIPT) $(LIBS) -Wl,-Map=$(BUILD_DIR)/$(TARGET).map,--gc-sections
+
+# 11. Build Rules
 all: $(BUILD_DIR)/$(TARGET).elf $(BUILD_DIR)/$(TARGET).hex $(BUILD_DIR)/$(TARGET).bin
 
-# Rule for C sources
-$(BUILD_DIR)/%.o: %.c Makefile | $(BUILD_DIR)
-	arm-none-eabi-gcc -c $(CFLAGS) -Wa,-a,-ad,-alms=$(BUILD_DIR)/$(notdir $(<:.c=.lst)) $< -o $@
+# Compile C
+$(BUILD_DIR)/%.o: %.c Makefile | $(BUILD_DIR) 
+	@echo "compiling $<"
+	@$(CC) -c $(CFLAGS) -Wa,-a,-ad,-alms=$(BUILD_DIR)/$(notdir $(<:.c=.lst)) $< -o $@
 
-# Rule for ASM sources
+# Assemble ASM
 $(BUILD_DIR)/%.o: %.s Makefile | $(BUILD_DIR)
-	arm-none-eabi-gcc -c $(CFLAGS) $< -o $@
+	@echo "assembling $<"
+	@$(AS) -c $(CFLAGS) $< -o $@
 
-# Rule for Linking
-$(BUILD_DIR)/$(TARGET).elf: $(OBJECTS)
-	arm-none-eabi-gcc $(OBJECTS) $(LDFLAGS) -o $@
-	arm-none-eabi-size $@
+# Link
+$(BUILD_DIR)/$(TARGET).elf: $(OBJECTS) Makefile | $(BUILD_DIR)
+	@echo "linking $@"
+	@$(CC) $(OBJECTS) $(LDFLAGS) -o $@
+	@$(SZ) $@
 
-$(BUILD_DIR)/$(TARGET).hex: $(BUILD_DIR)/$(TARGET).elf
-	arm-none-eabi-objcopy -O ihex $@ $(BUILD_DIR)/$(TARGET).hex
-
-$(BUILD_DIR)/$(TARGET).bin: $(BUILD_DIR)/$(TARGET).elf
-	arm-none-eabi-objcopy -O binary $@ $(BUILD_DIR)/$(TARGET).bin
-
+# Convert
+$(BUILD_DIR)/%.hex: $(BUILD_DIR)/%.elf | $(BUILD_DIR)
+	@$(HEX) $< $@
+	
+$(BUILD_DIR)/%.bin: $(BUILD_DIR)/%.elf | $(BUILD_DIR)
+	@$(BIN) $< $@
+	
 $(BUILD_DIR):
 	mkdir -p $@
 
+flash: $(BUILD_DIR)/$(TARGET).elf
+	$(STM32PRG) --write $<
+	$(STM32PRG) -hardRst
+
+erase:
+	$(STM32PRG) --erase all
+
+reset:
+	$(STM32PRG) -hardRst
+
 clean:
-	rm -rf $(BUILD_DIR)
+	-rm -fR $(BUILD_DIR)
 
 # Include dependencies
 -include $(OBJECTS:.o=.d)

@@ -4,23 +4,8 @@
  */
 
 #include "main.h"
-#include "stm32h5xx_hal.h"
-
-/* Includes for Enabled Modules */
-{% if config.modules.fdcan.enable %}
-#include "raceup_fdcan.h"
-{% endif %}
-{% if config.modules.usart.enable %}
-#include "raceup_usart.h"
-{% endif %}
 
 /* Private function prototypes -----------------------------------------------*/
-void SystemClock_Config(void);
-// static void MX_GPIO_Init(void);
-
-{% if config.modules.fdcan.enable == true %}
-void RUP_FDCAN_Config(void);
-{% endif %}
 
 /* Main Application ----------------------------------------------------------*/
 int main(void)
@@ -30,13 +15,14 @@ int main(void)
   HAL_Init();
 
   /* 2. Configure System Clock */
-  SystemClock_Config();
-
-  /* 3. Initialize Peripherals */
-  // MX_GPIO_Init();
+  SystemClock_Setup();
 
   {% if config.modules.fdcan.enable %}
-  RUP_FDCAN_Config();
+  RUP_FDCAN_Setup();
+  {% endif %}
+
+  {% if config.modules.gpio is defined %}
+  RUP_GPIO_Setup();
   {% endif %}
 
   /* 4. Infinite Loop */
@@ -46,223 +32,3 @@ int main(void)
   }
 }
 
-/**
-  * @brief System Clock Configuration
-  * @retval None
-  */
-void SystemClock_Config(void)
-{
-  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-  RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
-
-
-  /* Configure Power Voltage Scaling */
-  /* Missing in config.yaml: Assuming SCALE0 for high performance */
-  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE0);
-  while(!__HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY)) {}
-
-  /* --------------------------------------------------------------------------
-   * 1. Oscillator Configuration
-   * -------------------------------------------------------------------------- */
-  {% set sources = config.clock_config.sources %}
-  RCC_OscInitStruct.OscillatorType = 0;
-
-  /* HSI Configuration */
-  {% if sources.hsi.enable %}
-  RCC_OscInitStruct.OscillatorType |= RCC_OSCILLATORTYPE_HSI;
-  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSIDiv = RCC_HSI_DIV1; // Default
-  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  {% endif %}
-
-  /* HSE Configuration */
-  {% if sources.hse.enable %}
-  RCC_OscInitStruct.OscillatorType |= RCC_OSCILLATORTYPE_HSE;
-  RCC_OscInitStruct.HSEState = {% if sources.hse.bypass %}RCC_HSE_BYPASS{% else %}RCC_HSE_ON{% endif %};
-  {% endif %}
-
-  /* CSI / LSI / LSE could be added here if in config */
-
-  /* --------------------------------------------------------------------------
-   * 2. PLL1 Configuration
-   * -------------------------------------------------------------------------- */
-  {% set pll1 = config.clock_config.pll1 %}
-  {% if pll1.enable and pll1.regs %}
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLL1_SOURCE_{{ pll1.source | upper }};
-  RCC_OscInitStruct.PLL.PLLM = {{ pll1.regs.m }};
-  RCC_OscInitStruct.PLL.PLLN = {{ pll1.regs.n }};
-  RCC_OscInitStruct.PLL.PLLP = {{ pll1.regs.p | default(2) }};
-  RCC_OscInitStruct.PLL.PLLQ = {{ pll1.regs.q | default(2) }};
-  RCC_OscInitStruct.PLL.PLLR = {{ pll1.regs.r | default(2) }};
-
-  RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1_VCIRANGE_{{ pll1.regs.rge }}; 
-  RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1_VCORANGE_{{ pll1.regs.vco }};
-  RCC_OscInitStruct.PLL.PLLFRACN = 0;
-  {% else %}
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
-  {% endif %}
-
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /* --------------------------------------------------------------------------
-   * 3. Bus Clock Configuration
-   * -------------------------------------------------------------------------- */
-  {% set buses = config.clock_config.buses %}
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2
-                              |RCC_CLOCKTYPE_PCLK3;
-                              
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_{{ buses.sysclk_source | upper }};
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV{{ buses.ahb_div }};
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV{{ buses.apb1_div }};
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV{{ buses.apb2_div }};
-  RCC_ClkInitStruct.APB3CLKDivider = RCC_HCLK_DIV{{ buses.apb3_div }};
-
-  /* Missing in config.yaml: Flash Latency */
-  /* Assuming LATENCY_5 for high speed (e.g. 250MHz) */
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, {{ buses.flash_latency }}) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  {% if config.modules.fdcan.enable == true %}
-  {% set clk_src = config.modules.fdcan.clock_source | lower %}
-  /* --------------------------------------------------------------------------
-   * 3. FDCAN Clock Configuration
-   * -------------------------------------------------------------------------- */
-  {% if "pll2" in clk_src %}
-  // Configured to use PLL2 ({{ clk_src }})
-  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_FDCAN;
-  PeriphClkInitStruct.FdcanClockSelection = RCC_FDCANCLKSOURCE_{{ clk_src | upper }};
-
-  // PLL2 Configuration from Clock Tree Solver
-  {% set pll2 = config.clock_config.pll2 %}
-  {% if pll2.enable and pll2.regs %}
-  PeriphClkInitStruct.PLL2.PLL2Source = RCC_PLL2_SOURCE_{{ pll2.source | upper }};
-  PeriphClkInitStruct.PLL2.PLL2M = {{ pll2.regs.m }};
-  PeriphClkInitStruct.PLL2.PLL2N = {{ pll2.regs.n }};
-  PeriphClkInitStruct.PLL2.PLL2P = {{ pll2.regs.p | default(2) }};
-  PeriphClkInitStruct.PLL2.PLL2Q = {{ pll2.regs.q | default(2) }};
-  PeriphClkInitStruct.PLL2.PLL2R = {{ pll2.regs.r | default(2) }};
-  
-  PeriphClkInitStruct.PLL2.PLL2RGE = RCC_PLL2_VCIRANGE_{{ pll2.regs.rge }};
-  PeriphClkInitStruct.PLL2.PLL2VCOSEL = RCC_PLL2_VCORANGE_{{ pll2.regs.vco }};
-  PeriphClkInitStruct.PLL2.PLL2FRACN = 0;
-  PeriphClkInitStruct.PLL2.PLL2ClockOut = RCC_PLL2_DIVQ; 
-  {% endif %}
-
-  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK) {
-      // Initialization Error
-      while(1);
-  }
-  {% else %}
-  // Clock Source: {{ clk_src | upper }} (Not explicitly handled in MSP template PLL logic)
-  {% endif %}
-  __HAL_RCC_FDCAN_CLK_ENABLE();
-  {% endif %}
-
-}
-
-{% if config.modules.fdcan.enable %}
-void RUP_FDCAN_Config(void)
-{
-{% for inst_name, inst in config.modules.fdcan.instances.items() if inst.enable %}
-  {% set inst_upper = inst_name | upper %}
-
-  /* ==============================================================================
-   * {{ inst_upper }} Configuration 
-   * Speed: {{ inst.speed }} bps
-   * ============================================================================== */
-
-  /* 1. Bit Timings (Calculated by clock_prescaler.py) */
-  RUP_FDCAN_BitTimingTypeDef timing_{{ inst_name }} = {
-    .presc = {{ inst.timings.prescaler }},
-    .ts1   = {{ inst.timings.ts1 }},
-    .ts2   = {{ inst.timings.ts2 }},
-    .sjw   = 1  /* Recommended default SJW */
-  };
-
-  /* 2. Global Filter Configuration */
-  {% set global_action = 'FDCAN_REJECT' %}
-  {% for f in inst.filters if f.type == 'global' %}
-    {% if f.action == 'fifo0' %}{% set global_action = 'FDCAN_ACCEPT_IN_RX_FIFO0' %}{% endif %}
-    {% if f.action == 'fifo1' %}{% set global_action = 'FDCAN_ACCEPT_IN_RX_FIFO1' %}{% endif %}
-    {% if f.action == 'reject' %}{% set global_action = 'FDCAN_REJECT' %}{% endif %}
-  {% endfor %}
-
-  /* 3. Interrupt Mode Configuration */
-  {% set rx_it_mode = [] %}
-  {% if 'it0' in inst.interrupts %}{% set _ = rx_it_mode.append('RUP_FDCAN_IT_RX_FIFO0') %}{% endif %}
-  {% if 'it1' in inst.interrupts %}{% set _ = rx_it_mode.append('RUP_FDCAN_IT_RX_FIFO1') %}{% endif %}
-  {% set rx_it_string = rx_it_mode | join(' | ') if rx_it_mode else '0' %}
-
-  /* 4. Peripheral Initialization */
-  RUP_FDCAN_Init({{ inst_upper }}, timing_{{ inst_name }}, {{ global_action }}, {{ rx_it_string }});
-
-  /* 5. Reception Filters */
-  {% for f in inst.filters if f.type != 'global' %}
-    {% set f_type = 'FDCAN_FILTER_' ~ f.type | upper %}
-    
-    {% set f_action = 'FDCAN_FILTER_TO_RXFIFO0' %}
-    {% if f.action == 'fifo1' %}{% set f_action = 'FDCAN_FILTER_TO_RXFIFO1' %}{% endif %}
-    {% if f.action == 'reject' %}{% set f_action = 'FDCAN_FILTER_REJECT' %}{% endif %}
-    {% if f.action == 'fifo0_hp' %}{% set f_action = 'FDCAN_FILTER_TO_RXFIFO0_HP' %}{% endif %}
-    {% if f.action == 'fifo1_hp' %}{% set f_action = 'FDCAN_FILTER_TO_RXFIFO1_HP' %}{% endif %}
-    
-  RUP_FDCAN_AddFilter({{ inst_upper }}, {{ f_type }}, {{ f_action }}, {{ "0x%X" | format(f.id1) }}, {{ "0x%X" | format(f.id2) }});
-  {% endfor %}
-
-  /* 6. Start Peripheral */
-  RUP_FDCAN_Start({{ inst_upper }});
-  
-{% endfor %}
-}
-{% endif %}
-
-/**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
-//static void MX_GPIO_Init(void)
-//{
-  /* GPIO Ports Clock Enable */
-  /* This is a basic init. Specific pin clocks are enabled in MSP. */
-  //__HAL_RCC_GPIOA_CLK_ENABLE();
-  //__HAL_RCC_GPIOB_CLK_ENABLE();
-  //__HAL_RCC_GPIOC_CLK_ENABLE();
-  //__HAL_RCC_GPIOD_CLK_ENABLE();
-  //__HAL_RCC_GPIOH_CLK_ENABLE();
-//} 
-
-/**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
-void Error_Handler(void)
-{
-  __disable_irq();
-  while (1)
-  {
-  }
-}
-
-#ifdef  USE_FULL_ASSERT
-/**
-  * @brief  Reports the name of the source file and the source line number
-  * where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
-void assert_failed(uint8_t *file, uint32_t line)
-{
-  /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-}
-#endif /* USE_FULL_ASSERT */

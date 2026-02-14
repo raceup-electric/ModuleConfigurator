@@ -23,13 +23,6 @@ FDCAN_FILTER_ACTION_MAP = {
     "fifo1_hp": "RUP_FDCAN_FILTER_RXFIFO1_HP",
 }
 
-FDCAN_SPEED_MAP = {
-    "125000": "RUP_FDCAN_NOMINAL_BR_125",
-    "250000": "RUP_FDCAN_NOMINAL_BR_250",
-    "500000": "RUP_FDCAN_NOMINAL_BR_500",
-    "1000000": "RUP_FDCAN_NOMINAL_BR_1000",
-}
-
 FDCAN_RXITMODE_MAP = {
     "none": "RUP_FDCAN_IT_NONE",
     "fifo0": "RUP_FDCAN_IT_RX_FIFO0",
@@ -37,31 +30,61 @@ FDCAN_RXITMODE_MAP = {
     "all": "RUP_FDCAN_IT_ALL",
 }
 
+GPIO_MODE_MAP = {
+    "input": "GPIO_MODE_INPUT",
+    "output_pp": "GPIO_MODE_OUTPUT_PP",
+    "output_od": "GPIO_MODE_OUTPUT_OD",
+    "alternate_pp": "GPIO_MODE_AF_PP",
+    "alternate_od": "GPIO_MODE_AF_OD",
+    "analog": "GPIO_MODE_ANALOG",
+    "interrupt_rise": "GPIO_MODE_IT_RISING",
+    "interrupt_fall": "GPIO_MODE_IT_FALLING",
+    "interrupt_risefall": "GPIO_MODE_IT_RISING_FALLING",
+    "event_rise": "GPIO_MODE_EVT_RISING",
+    "event_fall": "GPIO_MODE_EVT_FALLING",
+    "event_risefall": "GPIO_MODE_EVT_RISING_FALLING",
+}
+
+GPIO_SPEED_MAP = {
+    "low": "GPIO_SPEED_FREQ_LOW",
+    "medium": "GPIO_SPEED_FREQ_MEDIUM",
+    "high": "GPIO_SPEED_FREQ_HIGH",
+    "very_high": "GPIO_SPEED_FREQ_VERY_HIGH",
+}
+
+GPIO_PULL_MAP = {
+    "no": "GPIO_NULL",
+    "up": "GPIO_PULLUP",
+    "down": "GPIO_PULLDOWN",
+}
+
 # Database for Alternate Functions (since they are removed from Config)
 # Key: (Instance Name, Pin Name) -> Value: AF Macro
 AF_DATABASE = {
     # FDCAN1
-    ("FDCAN1", "PA11"): "GPIO_AF9_FDCAN1",
-    ("FDCAN1", "PA12"): "GPIO_AF9_FDCAN1",
-    ("FDCAN1", "PB12"): "GPIO_AF9_FDCAN1",  # Example alternative
+    ("FDCAN1", "A11"): "GPIO_AF9_FDCAN1",
+    ("FDCAN1", "A12"): "GPIO_AF9_FDCAN1",
+    ("FDCAN1", "D0"): "GPIO_AF9_FDCAN1",
+    ("FDCAN1", "D1"): "GPIO_AF9_FDCAN1",
+    ("FDCAN1", "B12"): "GPIO_AF9_FDCAN1",  # Example alternative
     # FDCAN2
-    ("FDCAN2", "PB12"): "GPIO_AF9_FDCAN2",
-    ("FDCAN2", "PB13"): "GPIO_AF9_FDCAN2",
+    ("FDCAN2", "B12"): "GPIO_AF9_FDCAN2",
+    ("FDCAN2", "B13"): "GPIO_AF9_FDCAN2",
     # USART1
-    ("USART1", "PA9"): "GPIO_AF7_USART1",
-    ("USART1", "PA10"): "GPIO_AF7_USART1",
+    ("USART1", "A9"): "GPIO_AF7_USART1",
+    ("USART1", "A10"): "GPIO_AF7_USART1",
 }
 
 
 # ==============================================================================
 # 2. PARSING HELPERS (Jinja Filters)
 # ==============================================================================
-def parse_gpio_port(pin_str):
+def parse_gpio_bank(pin_str):
     """'A11' -> 'GPIOA'"""
     if not pin_str:
         return "GPIO_NULL"
-    port_char = pin_str[0].upper()
-    return f"GPIO{port_char}"
+    bank_char = pin_str[0].upper()
+    return f"GPIO{bank_char}"
 
 
 def parse_gpio_pin(pin_str):
@@ -88,6 +111,27 @@ def resolve_filter_type(val):
 
 def resolve_filter_action(val):
     return FDCAN_FILTER_ACTION_MAP.get(val.lower(), "RUP_FDCAN_FILTER_REJECT")
+
+
+def resolve_gpio_mode(val):
+    return GPIO_MODE_MAP.get(val.lower(), "GPIO_MODE_INPUT")
+
+
+def resolve_gpio_speed(val):
+    return GPIO_SPEED_MAP.get(val.lower(), "GPIO_SPEED_FREQ_LOW")
+
+
+def resolve_gpio_pull(val):
+    return GPIO_PULL_MAP.get(val.lower(), "GPIO_NOPULL")
+
+
+def af_to_hex(af_string):
+    """Converts 'afX' to '((uint8_t)0x0X)'."""
+    if not af_string.startswith("af"):
+        return af_string  # Return as-is if it's not formatted correctly
+
+    af_num = int(af_string[2:])
+    return f"((uint8_t)0x{af_num:02X})"
 
 
 # Path to templates relative to this script
@@ -148,22 +192,29 @@ def generate_project_files(config, target_dir):
     env.lstrip_blocks = True
 
     # REGISTER CUSTOM FILTERS
-    env.filters["gpio_port"] = parse_gpio_port
+    env.filters["gpio_bank"] = parse_gpio_bank
     env.filters["gpio_pin"] = parse_gpio_pin
     env.filters["af_lookup"] = resolve_af
     env.filters["filter_type"] = resolve_filter_type
     env.filters["filter_action"] = resolve_filter_action
+    env.filters["gpio_mode"] = resolve_gpio_mode
+    env.filters["gpio_speed"] = resolve_gpio_speed
+    env.filters["gpio_pull"] = resolve_gpio_pull
+    env.filters["af_to_hex"] = af_to_hex
 
     # 3. Define Template Mapping { TemplateFile : OutputPathRelative }
     # You can add more files here easily
     templates_map = {
         "Makefile.jinja": "Makefile",
         "Src/main.c.jinja": "Src/main.c",
-        "Src/raceup_msp.c.jinja": "Src/raceup_msp.c",
+        "Src/raceup_setup.c.jinja": "Src/raceup_setup.c",
         "Src/stm32h5xx_it.c.jinja": "Src/stm32h5xx_it.c",
+        "Src/syscalls.c": "Src/syscalls.c",
+        "Src/sysmem.c": "Src/sysmem.c",
         "Inc/main.h.jinja": "Inc/main.h",
         "Inc/stm32h5xx_hal_conf.h.jinja": "Inc/stm32h5xx_hal_conf.h",
         "Inc/stm32h5xx_it.h": "Inc/stm32h5xx_it.h",
+        "Inc/raceup_setup.h.jinja": "Inc/raceup_setup.h",
     }
 
     # 4. Render All
