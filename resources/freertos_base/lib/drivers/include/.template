@@ -1,0 +1,11 @@
+#pragma once
+
+#include "common/common.hpp"
+
+namespace ru::driver {
+
+class : public Driver {
+  
+};
+
+} // namespace ru::driver

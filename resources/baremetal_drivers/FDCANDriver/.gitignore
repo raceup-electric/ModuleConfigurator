@@ -1,0 +1,10 @@
+Build/
+Docs/
+*.elf
+*.map
+*.o
+*.bin
+*.hex
+
+.DS_Store
+Thumbs.db

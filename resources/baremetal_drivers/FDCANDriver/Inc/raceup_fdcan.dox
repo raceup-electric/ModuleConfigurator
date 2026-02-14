@@ -1,0 +1,65 @@
+/**
+ * @page fdcan_usage FDCAN Driver Usage and Configuration
+ * @brief Detailed guide on using the RaceUp FDCAN wrapper, including bitrate tables and workflow examples.
+ * * @section sec_intro Introduction
+ * The RaceUp FDCAN driver wraps the STM32 HAL FDCAN drivers to provide a simplified, 
+ * safe, and consistent API for the team. It abstracts initialization, filter configuration, 
+ * and interrupt handling.
+ *
+ * @section sec_timings Bitrate and Prescaling Tables
+ * The driver uses hardcoded timing parameters in `RUP_FDCAN_Init` to ensure stability. 
+ * Below are the configurations for the supported Nominal Bitrates.
+ * * | Bitrate Enum | Prescaler | TimeSeg1 | TimeSeg2 | SJW | Total TQ |
+ * | :--- | :---: | :---: | :---: | :---: | :---: |
+ * | @ref FDCAN_NOMINAL_BR_125  | 10 | 13 | 2 | 1 | 16 |
+ * | @ref FDCAN_NOMINAL_BR_250  | 5  | 13 | 2 | 1 | 16 |
+ * | @ref FDCAN_NOMINAL_BR_500  | 4  | 8  | 1 | 1 | 10 |
+ * | @ref FDCAN_NOMINAL_BR_1000 | 2  | 8  | 1 | 1 | 10 |
+ *
+ * @note These values assume a specific peripheral clock source (PLL2Q). 
+ * Changes to `HAL_FDCAN_MspInit` clock sources will affect the resulting baud rate.
+ *
+ * @section sec_workflows Usage Workflows
+ *
+ * @subsection sub_polling Method 1: Polling Mode (Blocking)
+ * Useful for simple applications or RTOS tasks where blocking is acceptable.
+ *
+ * @code
+ * // 1. Initialize
+ * RUP_FDCAN_Init(FDCAN1, FDCAN_NOMINAL_BR_500, RUP_FDCAN_REJECT, RUP_FDCAN_IT_NONE);
+ * RUP_FDCAN_Start(FDCAN1);
+ * * // 2. Loop
+ * while(1) {
+ * // Wait up to 10ms for a message
+ * if (RUP_FDCAN_PollRxMessage(FDCAN1, RUP_FDCAN_RX_FIFO0, 10) == RUP_FDCAN_OK) {
+ * RUP_FDCAN_ReadRxMessage(FDCAN1, RUP_FDCAN_RX_FIFO0); 
+ * // Note: In polling, you must check the buffer manually or registers
+ * // usually ReadRxMessage triggers the callback internally if registered,
+ * // otherwise data is lost if not handled immediately in the read function modification.
+ * }
+ * }
+ * @endcode
+ *
+ * @subsection sub_interrupt Method 2: Interrupt/Callback Mode (Non-Blocking)
+ * Recommended for high-performance applications.
+ *
+ * @code
+ * // 1. Define Callback
+ * void My_CAN_Handler(uint16_t id, uint8_t* data, uint8_t len) {
+ * if (id == 0x123) {
+ * // Handle critical message
+ * }
+ * }
+ *
+ * // 2. Register and Init
+ * void Setup() {
+ * // Register callback BEFORE start
+ * RUP_FDCAN_RegisterRxFIFO0Callback(FDCAN1, My_CAN_Handler);
+ * * // Initialize with Interrupts Enabled for FIFO0
+ * RUP_FDCAN_Init(FDCAN1, FDCAN_NOMINAL_BR_500, RUP_FDCAN_REJECT, RUP_FDCAN_IT_RX_FIFO0);
+ * * // Configure Filters
+ * RUP_FDCAN_AddFilter(FDCAN1, RUP_FDCAN_FILTER_RANGE, RUP_FDCAN_FILTER_TO_RXFIFO0, 0x100, 0x200);
+ * * RUP_FDCAN_Start(FDCAN1);
+ * }
+ * @endcode
+ */
