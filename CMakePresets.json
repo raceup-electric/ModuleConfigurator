@@ -1,0 +1,38 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "stm32h563vit6x",
+      "displayName": "STM32H563VIT6x",
+      "generator": "Ninja",
+      "binaryDir": ".build-stm32h563vit6x",
+      "cacheVariables": {
+        "INSTANCE": "stm32h563vit6x",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "stm32h563vit6x",
+      "configurePreset": "stm32h563vit6x",
+      "jobs": 8
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "stm32h563vit6x",
+      "displayName": "STM32H563VIT6x (configure + build)",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "stm32h563vit6x"
+        },
+        {
+          "type": "build",
+          "name": "stm32h563vit6x"
+        }
+      ]
+    }
+  ]
+}

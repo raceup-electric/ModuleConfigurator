@@ -1,0 +1,90 @@
+project_name: "example_freertos_node"
+
+# ==============================================================================
+# 3. OS CONFIGURATION (NEW)
+# Only parsed if build.os == 'freertos'. Used to template FreeRTOSConfig.h 
+# and generate thread definitions in freertos_impl.c / main_app.cpp.
+# ==============================================================================
+os_config:
+  heap_size: 15360         # Maps to configTOTAL_HEAP_SIZE (bytes)
+  tick_rate_hz: 1000       # Maps to configTICK_RATE_HZ
+  max_priorities: 7        # Maps to configMAX_PRIORITIES
+  min_stack_size: 128      # Maps to configMINIMAL_STACK_SIZE (words)
+  
+  # Define tasks to be auto-generated in the application layer
+  tasks:
+    default_task:
+      priority: 3
+      stack_size: 256      # In words (e.g., 256 * 4 bytes)
+      entry: StartDefaultTask
+    
+    can_rx_task:
+      priority: 5
+      stack_size: 512
+      entry: StartCanRxTask
+
+# ------------------------------------------------------------------------------
+# Peripheral Modules
+# - Keys (fdcan1, usart2) must match the Hardware Instance name.
+# - 'clock_source' maps to the HAL RCC definitions (e.g., PLL2Q, PLL2R, PCLK1).
+# ------------------------------------------------------------------------------
+modules:
+
+  # --- FDCAN GROUP ---
+  fdcan:
+    enable: true
+    instances:
+      fdcan1:
+        enable: true
+        pins:
+          rx: D0
+          tx: D1
+        interrupts:
+          it0: { priority: 5, subpriority: 0 }
+          it1: { priority: 6, subpriority: 0 }
+          fifo_rx: fifo0,fifo1
+        
+        # Types: RANGE, DUAL, MASK
+        # Configs: TO_RXFIFO0, TO_RXFIFO1, REJECT, RXFIFO0_HP, RXFIFO1_HP
+        filters:
+          - type: global
+            action: fifo0
+          - type: range
+            action: fifo0
+            id1: 0x100
+            id2: 0x110
+          - type: mask
+            action: fifo1
+            id1: 0x200       # ID
+            id2: 0x7F0       # Mask
+
+      fdcan2:
+        enable: false
+        pins:
+          rx: B12
+          tx: B13
+        interrupts:
+          it0: { priority: 5, subpriority: 0 }
+        
+        filters:
+          - type: dual
+            action: fifo0_hp # High Priority
+            id1: 0x010         # Emergency Message
+            id2: 0x020         # Critical Control
+
+  gpio:
+    - name: "yellow_led"
+      pin: F4
+      mode: output_pp
+      pull: nopull
+      speed: low
+    - name: "red_led"
+      pin: G4
+      mode: output_pp
+      pull: nopull
+      speed: low
+    - name: "green_led"
+      pin: B0
+      mode: output_pp
+      pull: nopull
+      speed: low
