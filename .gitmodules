@@ -1,0 +1,12 @@
+[submodule "third_party/FreeRTOS-LTS"]
+	path = third_party/FreeRTOS-LTS
+	url = https://github.com/FreeRTOS/FreeRTOS-LTS
+[submodule "third_party/STM32/STM32H5/stm32h5xx-hal-driver"]
+	path = third_party/STM32/STM32H5/stm32h5xx-hal-driver
+	url = https://github.com/STMicroelectronics/stm32h5xx-hal-driver
+[submodule "third_party/STM32/STM32H5/cmsis-device-h5"]
+	path = third_party/STM32/STM32H5/cmsis-device-h5
+	url = https://github.com/STMicroelectronics/cmsis-device-h5
+[submodule "third_party/STM32/STM32H5/STM32CubeH5"]
+	path = third_party/STM32/STM32H5/STM32CubeH5
+	url = https://github.com/STMicroelectronics/STM32CubeH5
