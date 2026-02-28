@@ -1,5 +1,6 @@
 #include "main.h" 
 #include "raceup_fdcan.h"
+#include "raceup_setup.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
@@ -48,10 +49,9 @@ static QueueHandle_t rxQueueHandle;
 void app_start(void) {
   // 1. Create the FreeRTOS Queue for Rx messages
   rxQueueHandle = xQueueCreateStatic(RX_QUEUE_LENGTH, RX_QUEUE_ITEM_SIZE, rxQueueStorage, &rxQueueStruct);
-
-  // 2. Register Callbacks and Start FDCAN
-  // (Hardware Init is assumed to be handled in raceup_setup.c)
-  RUP_FDCAN_RegisterRxFIFO0Callback(FDCAN1, Fdcan1RxCallback);
+  
+  config_FDCAN();
+  config_GPIO();
 
   // 3. Create Tasks dynamically
   xTaskCreateStatic(StartDefaultTask, "default_task", 256, NULL, 3, default_taskStack, &default_taskTcb);
