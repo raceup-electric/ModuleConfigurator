@@ -100,6 +100,16 @@ static void {{ task.entry }}(void *arg) {
       // without stalling the FDCAN peripheral.
     }
   }
+  {%- elif 'tx' in task_name %}
+  uint8_t tx_data[8] = {0xDE, 0xAD, 0xBE, 0xEF, 0x11, 0x22, 0x33, 0x44};
+
+  for (;;) {
+    // Send a CAN frame every 1000ms
+    RUP_FDCAN_Send(FDCAN1, 0x123, tx_data, 8);
+    // BlinkGPIO(GPIOE, GPIO_PIN_3, 100); // Main LED
+    vTaskDelay(pdMS_TO_TICKS(900));
+  }
+}
   {%- else %}
   // Default Task Loop
   for (;;) {

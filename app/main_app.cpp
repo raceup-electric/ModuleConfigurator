@@ -20,6 +20,7 @@ typedef struct {
 // Task Prototypes generated from config.yaml
 static void StartDefaultTask(void *arg);
 static void StartCanRxTask(void *arg);
+static void StartCanTxTask(void *arg);
 
 // FDCAN Rx Callback Prototypes
 static void Fdcan1RxCallback(uint16_t id, uint8_t* data, uint8_t len);
@@ -35,6 +36,10 @@ static StaticTask_t default_taskTcb;
 
 static StackType_t can_rx_taskStack[512];
 static StaticTask_t can_rx_taskTcb;
+
+
+static StackType_t can_tx_taskStack[512];
+static StaticTask_t can_tx_taskTcb;
 
 
 
@@ -56,6 +61,7 @@ void app_start(void) {
   // 3. Create Tasks dynamically
   xTaskCreateStatic(StartDefaultTask, "default_task", 256, NULL, 3, default_taskStack, &default_taskTcb);
   xTaskCreateStatic(StartCanRxTask, "can_rx_task", 512, NULL, 5, can_rx_taskStack, &can_rx_taskTcb);
+  xTaskCreateStatic(StartCanTxTask, "can_tx_task", 512, NULL, 5, can_tx_taskStack, &can_tx_taskTcb);
 }
 
 // ------------------------------------------------------ FDCAN Rx Callbacks (ISR Context)
@@ -98,6 +104,19 @@ static void StartCanRxTask(void *arg) {
       // without stalling the FDCAN peripheral.
     }
   }
+}
+
+
+static void StartCanTxTask(void *arg) {
+  uint8_t tx_data[8] = {0xDE, 0xAD, 0xBE, 0xEF, 0x11, 0x22, 0x33, 0x44};
+
+  for (;;) {
+    // Send a CAN frame every 1000ms
+    RUP_FDCAN_Send(FDCAN1, 0x123, tx_data, 8);
+    // BlinkGPIO(GPIOE, GPIO_PIN_3, 100); // Main LED
+    vTaskDelay(pdMS_TO_TICKS(900));
+  }
+}
 }
 
 

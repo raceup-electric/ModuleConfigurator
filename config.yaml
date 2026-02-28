@@ -23,6 +23,11 @@ os_config:
       stack_size: 512
       entry: StartCanRxTask
 
+    can_tx_task:
+      priority: 5
+      stack_size: 512
+      entry: StartCanTxTask
+
 # ------------------------------------------------------------------------------
 # Peripheral Modules
 # - Keys (fdcan1, usart2) must match the Hardware Instance name.
