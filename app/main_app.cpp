@@ -117,7 +117,6 @@ static void StartCanTxTask(void *arg) {
     vTaskDelay(pdMS_TO_TICKS(900));
   }
 }
-}
 
 
 static void BlinkGPIO(GPIO_TypeDef* bank, uint16_t pin, uint32_t duration) {

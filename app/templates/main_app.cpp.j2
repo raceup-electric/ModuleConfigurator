@@ -109,7 +109,6 @@ static void {{ task.entry }}(void *arg) {
     // BlinkGPIO(GPIOE, GPIO_PIN_3, 100); // Main LED
     vTaskDelay(pdMS_TO_TICKS(900));
   }
-}
   {%- else %}
   // Default Task Loop
   for (;;) {
