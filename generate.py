@@ -1,5 +1,6 @@
-import yaml
 import os
+import yaml
+from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
 
@@ -17,30 +18,45 @@ def main():
     with open("config.yaml", "r") as f:
         config = yaml.safe_load(f)
 
-    # Define paths
-    template_dir = "./lib/drivers/instances/stm32h5xx/templates"
-    template_name = "raceup_setup.c.j2"
-    output_file = "./lib/drivers/instances/stm32h5xx/raceup_setup.c"
+    # Define the base directory to search for templates (adjust as needed)
+    base_dir = Path(".")
 
-    # 2. Setup Jinja2 environment pointing to the specific templates directory
-    env = Environment(loader=FileSystemLoader(template_dir))
-    env.filters["pinbank"] = pinbank
-    env.filters["pinno"] = pinno
+    # 2. Find all .j2 template files recursively in the base directory
+    for template_path in base_dir.rglob("*.j2"):
+        # Extract folder and file names
+        template_dir = template_path.parent
+        template_name = template_path.name
 
-    # Load the template
-    template = env.get_template(template_name)
+        # 3. Calculate the target output path
+        # If the template is inside a "templates" folder, place the output in the parent directory
+        if template_dir.name == "templates":
+            output_dir = template_dir.parent
+        else:
+            output_dir = template_dir  # Fallback: keep it in the same directory
 
-    # 3. Render the template with the config data
-    rendered_code = template.render(config)
+        # Remove the '.j2' extension (e.g., raceup_setup.c.j2 -> raceup_setup.c)
+        output_filename = template_path.with_suffix("").name
+        output_file = output_dir / output_filename
 
-    # 4. Write the output to the target C file
-    # Ensure the target directory exists before writing
-    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        # 4. Setup Jinja2 environment for the current template's specific directory
+        env = Environment(loader=FileSystemLoader(template_dir))
+        env.filters["pinbank"] = pinbank
+        env.filters["pinno"] = pinno
 
-    with open(output_file, "w") as f:
-        f.write(rendered_code)
+        # Load the template
+        template = env.get_template(template_name)
 
-    print(f"Successfully generated {output_file}")
+        # 5. Render the template with the config data
+        rendered_code = template.render(config)
+
+        # 6. Write the output to the target file
+        # Ensure the target directory exists before writing
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(output_file, "w") as f:
+            f.write(rendered_code)
+
+        print(f"Successfully generated {output_file}")
 
 
 if __name__ == "__main__":

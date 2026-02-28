@@ -73,18 +73,8 @@ modules:
             id2: 0x020         # Critical Control
 
   gpio:
-    - name: "yellow_led"
-      pin: F4
-      mode: output_pp
-      pull: nopull
-      speed: low
-    - name: "red_led"
-      pin: G4
-      mode: output_pp
-      pull: nopull
-      speed: low
-    - name: "green_led"
-      pin: B0
+    - name: "user_led"
+      pin: E3
       mode: output_pp
       pull: nopull
       speed: low
