@@ -17,25 +17,27 @@ typedef struct {
 // ------------------------------------------------------ Function Prototypes
 
 // Task Prototypes generated from config.yaml
-static void StartDefaultTask(void *arg);
-static void StartCanRxTask(void *arg);
+{%- for task_name, task in os_config.tasks.items() %}
+static void {{ task.entry }}(void *arg);
+{%- endfor %}
 
 // FDCAN Rx Callback Prototypes
-static void Fdcan1RxCallback(uint16_t id, uint8_t* data, uint8_t len);
+{%- if modules.fdcan.enable %}
+{%- for inst_name, inst in modules.fdcan.instances.items() if inst.enable %}
+static void {{ inst_name | capitalize }}RxCallback(uint16_t id, uint8_t* data, uint8_t len);
+{%- endfor %}
+{%- endif %}
 
 static void BlinkGPIO(GPIO_TypeDef* bank, uint16_t pin, uint32_t duration);
 
 // ------------------------------------------------------ FreeRTOS Static Allocations
 
 // Task Stacks and TCBs generated from config.yaml
-static StackType_t default_taskStack[256];
-static StaticTask_t default_taskTcb;
+{%- for task_name, task in os_config.tasks.items() %}
+static StackType_t {{ task_name }}Stack[{{ task.stack_size }}];
+static StaticTask_t {{ task_name }}Tcb;
 
-
-static StackType_t can_rx_taskStack[512];
-static StaticTask_t can_rx_taskTcb;
-
-
+{% endfor %}
 
 // Rx Queue (Holds up to 10 incoming CAN messages)
 #define RX_QUEUE_LENGTH 10
@@ -51,15 +53,24 @@ void app_start(void) {
 
   // 2. Register Callbacks and Start FDCAN
   // (Hardware Init is assumed to be handled in raceup_setup.c)
-  RUP_FDCAN_RegisterRxFIFO0Callback(FDCAN1, Fdcan1RxCallback);
+  {%- if modules.fdcan.enable %}
+  {%- for inst_name, inst in modules.fdcan.instances.items() if inst.enable %}
+  {%- set inst_upper = inst_name | upper %}
+  RUP_FDCAN_RegisterRxFIFO0Callback({{ inst_upper }}, {{ inst_name | capitalize }}RxCallback);
+  {%- endfor %}
+  {%- endif %}
 
   // 3. Create Tasks dynamically
-  xTaskCreateStatic(StartDefaultTask, "default_task", 256, NULL, 3, default_taskStack, &default_taskTcb);
-  xTaskCreateStatic(StartCanRxTask, "can_rx_task", 512, NULL, 5, can_rx_taskStack, &can_rx_taskTcb);
+  {%- for task_name, task in os_config.tasks.items() %}
+  xTaskCreateStatic({{ task.entry }}, "{{ task_name }}", {{ task.stack_size }}, NULL, {{ task.priority }}, {{ task_name }}Stack, &{{ task_name }}Tcb);
+  {%- endfor %}
 }
 
 // ------------------------------------------------------ FDCAN Rx Callbacks (ISR Context)
-static void Fdcan1RxCallback(uint16_t id, uint8_t* data, uint8_t len) {
+
+{%- if modules.fdcan.enable %}
+{%- for inst_name, inst in modules.fdcan.instances.items() if inst.enable %}
+static void {{ inst_name | capitalize }}RxCallback(uint16_t id, uint8_t* data, uint8_t len) {
   // NOTE: This runs in the hardware interrupt context!
   
   CanRxMessage_t msg;
@@ -75,18 +86,14 @@ static void Fdcan1RxCallback(uint16_t id, uint8_t* data, uint8_t len) {
   // Yield if waking the Rx task requires a context switch
   portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
+{%- endfor %}
+{%- endif %}
 
 // ------------------------------------------------------ Task Implementations
-static void StartDefaultTask(void *arg) {
-  // Default Task Loop
-  for (;;) {
-    BlinkGPIO(GPIOE, GPIO_PIN_3, 300); // Main LED
-    vTaskDelay(pdMS_TO_TICKS(700));
-  }
-}
 
-
-static void StartCanRxTask(void *arg) {
+{%- for task_name, task in os_config.tasks.items() %}
+static void {{ task.entry }}(void *arg) {
+  {%- if 'rx' in task_name %}
   CanRxMessage_t received_msg;
 
   for (;;) {
@@ -98,9 +105,16 @@ static void StartCanRxTask(void *arg) {
       // without stalling the FDCAN peripheral.
     }
   }
+  {%- else %}
+  // Default Task Loop
+  for (;;) {
+    BlinkGPIO(GPIOE, GPIO_PIN_3, 300); // Main LED
+    vTaskDelay(pdMS_TO_TICKS(700));
+  }
+  {%- endif %}
 }
 
-
+{% endfor %}
 static void BlinkGPIO(GPIO_TypeDef* bank, uint16_t pin, uint32_t duration) {
   // Turn the LED ON (Assumes active-high; swap SET/RESET if active-low)
   HAL_GPIO_WritePin(bank, pin, GPIO_PIN_SET);
