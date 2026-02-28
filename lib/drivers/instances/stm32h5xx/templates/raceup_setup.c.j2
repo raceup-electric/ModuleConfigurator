@@ -7,7 +7,6 @@ void SystemClock_Config(void)
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE0);
-
   while(!__HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY)) {}
 
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI | RCC_OSCILLATORTYPE_HSE;
@@ -15,7 +14,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSIDiv = RCC_HSI_DIV1;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-
+  
   // PLL1
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLL1_SOURCE_HSI;
@@ -27,6 +26,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1_VCIRANGE_2;
   RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1_VCORANGE_WIDE;
   RCC_OscInitStruct.PLL.PLLFRACN = 0;
+  
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -41,17 +41,17 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB3CLKDivider = RCC_HCLK_DIV1;
-
+  
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK)
   {
     Error_Handler();
   }
 
-  {% if modules.fdcan.enable %}
+  {%- if modules.fdcan.enable %}
   RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
   PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_FDCAN;
   PeriphClkInitStruct.FdcanClockSelection = RCC_FDCANCLKSOURCE_PLL2Q;
-  PeriphClkInitStruct.PLL2.PLL2Source = RCC_PLL2_SOURCE_HSE; 
+  PeriphClkInitStruct.PLL2.PLL2Source = RCC_PLL2_SOURCE_HSE;
   PeriphClkInitStruct.PLL2.PLL2M = 2;
   PeriphClkInitStruct.PLL2.PLL2N = 10;
   PeriphClkInitStruct.PLL2.PLL2P = 2;
@@ -66,21 +66,20 @@ void SystemClock_Config(void)
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK) {
     Error_Handler();
   }
-  {% endif %}
+  {%- endif %}
   
   __HAL_FLASH_SET_PROGRAM_DELAY(FLASH_PROGRAMMING_DELAY_2);
 }
 
 void config_FDCAN(void) {
-{% if modules.fdcan.enable %}
+{%- if modules.fdcan.enable %}
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-
   /* Enable global FDCAN clock */
   __HAL_RCC_FDCAN_CLK_ENABLE();
 
   /* Loop through all FDCAN instances (e.g., fdcan1, fdcan2) defined in YAML */
-  {% for inst_name, inst in modules.fdcan.instances.items() if inst.enable %}
-  {% set inst_upper = inst_name | upper %}
+  {%- for inst_name, inst in modules.fdcan.instances.items() if inst.enable %}
+  {%- set inst_upper = inst_name | upper %}
 
   /* ==============================================================================
    * {{ inst_upper }} Hardware Setup (GPIO & NVIC)
@@ -99,21 +98,23 @@ void config_FDCAN(void) {
   
   // Assumes Rx and Tx are on the same GPIO bank for this implementation
   HAL_GPIO_Init(GPIO{{inst.pins.rx | pinbank}}, &GPIO_InitStruct);
-
+  
   /* Configure Interrupts (NVIC) */
-  {% if inst.interrupts.it0 is defined %}
-  HAL_NVIC_SetPriority({{ inst_upper }}_IT0_IRQn, {{inst.interrupts.it0.priority}}, {{inst.interrupts.it0.subpriority}}); // Rx Interrupts
+  {%- if inst.interrupts.it0 is defined %}
+  HAL_NVIC_SetPriority({{ inst_upper }}_IT0_IRQn, {{inst.interrupts.it0.priority}}, {{inst.interrupts.it0.subpriority}});
+  // Rx Interrupts
   HAL_NVIC_EnableIRQ({{ inst_upper }}_IT0_IRQn);
-  {% endif %}
+  {%- endif %}
 
-  {% if inst.interrupts.it1 is defined %}
-  HAL_NVIC_SetPriority({{ inst_upper }}_IT1_IRQn, {{inst.interrupts.it1.priority}}, {{inst.interrupts.it1.subpriority}}); // Error Interrupts
+  {%- if inst.interrupts.it1 is defined %}
+  HAL_NVIC_SetPriority({{ inst_upper }}_IT1_IRQn, {{inst.interrupts.it1.priority}}, {{inst.interrupts.it1.subpriority}});
+  // Error Interrupts
   HAL_NVIC_EnableIRQ({{ inst_upper }}_IT1_IRQn);
-  {% endif %}
+  {%- endif %}
 
   /* ==============================================================================
    * {{ inst_upper }} Peripheral Configuration 
-   * {% if inst.speed is defined %}Speed: {{ inst.speed }} bps{% endif %}
+   {%- if inst.speed is defined %} * Speed: {{ inst.speed }} bps{% endif %}
    * ============================================================================== */
 
   /* 1. Bit Timings (Calculated by clock_prescaler.py or fixed for now) */
@@ -123,55 +124,51 @@ void config_FDCAN(void) {
     .ts2   = 1,
     .sjw   = 1  /* Recommended default SJW */
   };
-
+  
   /* 2. Global Filter Configuration */
-  {% set global_action = 'RUP_FDCAN_REJECT' %}
-  {% for f in inst.filters if f.type == 'global' %}
-    {% if f.action == 'fifo0' %}{% set global_action = 'RUP_FDCAN_ACCEPT_IN_RX_FIFO0' %}{% endif %}
-    {% if f.action == 'fifo1' %}{% set global_action = 'RUP_FDCAN_ACCEPT_IN_RX_FIFO1' %}{% endif %}
-    {% if f.action == 'reject' %}{% set global_action = 'RUP_FDCAN_REJECT' %}{% endif %}
-  {% endfor %}
+  {%- set global_action = 'RUP_FDCAN_REJECT' %}
+  {%- for f in inst.filters if f.type == 'global' %}
+    {%- if f.action == 'fifo0' %}{% set global_action = 'RUP_FDCAN_ACCEPT_IN_RX_FIFO0' %}{% endif %}
+    {%- if f.action == 'fifo1' %}{% set global_action = 'RUP_FDCAN_ACCEPT_IN_RX_FIFO1' %}{% endif %}
+    {%- if f.action == 'reject' %}{% set global_action = 'RUP_FDCAN_REJECT' %}{% endif %}
+  {%- endfor %}
 
   /* 3. RX Interrupt Mode Configuration */
-  {% set it_mode = 'RUP_FDCAN_IT_NONE' %}
-  {% if inst.fifo_rx is defined %}
-    {% if inst.fifo_rx == 'fifo0' %}
-      {% set it_mode = 'RUP_FDCAN_IT_RX_FIFO0' %}
-    {% elif inst.fifo_rx == 'fifo1' %}
-      {% set it_mode = 'RUP_FDCAN_IT_RX_FIFO1' %}
-    {% elif inst.fifo_rx == 'fifo0,fifo1' or inst.fifo_rx == 'all' %}
-      {% set it_mode = 'RUP_FDCAN_IT_ALL' %}
-    {% endif %}
-  {% endif %}
+  {%- set it_mode = 'RUP_FDCAN_IT_NONE' %}
+  {%- if inst.fifo_rx is defined %}
+    {%- if inst.fifo_rx == 'fifo0' %}
+      {%- set it_mode = 'RUP_FDCAN_IT_RX_FIFO0' %}
+    {%- elif inst.fifo_rx == 'fifo1' %}
+      {%- set it_mode = 'RUP_FDCAN_IT_RX_FIFO1' %}
+    {%- elif inst.fifo_rx == 'fifo0,fifo1' or inst.fifo_rx == 'all' %}
+      {%- set it_mode = 'RUP_FDCAN_IT_ALL' %}
+    {%- endif %}
+  {%- endif %}
 
   /* 4. Peripheral Initialization */
   RUP_FDCAN_Init({{ inst_upper }}, timing_{{ inst_name }}, {{ global_action }}, {{ it_mode }});
-
+  
   /* 5. Reception Filters */
-  {% for f in inst.filters if f.type != 'global' %}
-    {% set f_type = 'RUP_FDCAN_FILTER_' ~ f.type | upper %}
-    
-    {% set f_action = 'RUP_FDCAN_FILTER_TO_RXFIFO0' %}
-    {% if f.action == 'fifo1' %}{% set f_action = 'RUP_FDCAN_FILTER_TO_RXFIFO1' %}{% endif %}
-    {% if f.action == 'reject' %}{% set f_action = 'RUP_FDCAN_FILTER_REJECT' %}{% endif %}
-    {% if f.action == 'fifo0_hp' %}{% set f_action = 'RUP_FDCAN_FILTER_RXFIFO0_HP' %}{% endif %}
-    {% if f.action == 'fifo1_hp' %}{% set f_action = 'RUP_FDCAN_FILTER_RXFIFO1_HP' %}{% endif %}
+  {%- for f in inst.filters if f.type != 'global' %}
+    {%- set f_type = 'RUP_FDCAN_FILTER_' ~ f.type | upper %}
+    {%- set f_action = 'RUP_FDCAN_FILTER_TO_RXFIFO0' %}
+    {%- if f.action == 'fifo1' %}{% set f_action = 'RUP_FDCAN_FILTER_TO_RXFIFO1' %}{% endif %}
+    {%- if f.action == 'reject' %}{% set f_action = 'RUP_FDCAN_FILTER_REJECT' %}{% endif %}
+    {%- if f.action == 'fifo0_hp' %}{% set f_action = 'RUP_FDCAN_FILTER_RXFIFO0_HP' %}{% endif %}
+    {%- if f.action == 'fifo1_hp' %}{% set f_action = 'RUP_FDCAN_FILTER_RXFIFO1_HP' %}{% endif %}
     
   RUP_FDCAN_AddFilter({{ inst_upper }}, {{ f_type }}, {{ f_action }}, {{ "0x%X" | format(f.id1) }}, {{ "0x%X" | format(f.id2) }});
-  {% endfor %}
+  {%- endfor %}
 
   /* 6. Start Peripheral */
   RUP_FDCAN_Start({{ inst_upper }});
-
-  {% endfor %}
-
-{% endif %}
+  {%- endfor %}
+{%- endif %}
 }
 
 void config_GPIO(void) {
-{% if modules.gpio %}
-
-  {% for gpio in modules.gpio %}
+{%- if modules.gpio %}
+  {%- for gpio in modules.gpio %}
   GPIO_InitTypeDef GPIO_InitStruct_{{gpio.pin | upper}} = {0};
   __HAL_RCC_GPIO{{gpio.pin | pinbank}}_CLK_ENABLE();
   GPIO_InitStruct_{{gpio.pin | upper}}.Pin = GPIO_PIN_{{ gpio.pin | pinno }};
@@ -179,7 +176,6 @@ void config_GPIO(void) {
   GPIO_InitStruct_{{gpio.pin | upper}}.Pull = GPIO_{{gpio.pull | upper}};
   GPIO_InitStruct_{{gpio.pin | upper}}.Speed = GPIO_SPEED_FREQ_{{gpio.speed | upper}};
   HAL_GPIO_Init(GPIO{{gpio.pin | pinbank}}, &GPIO_InitStruct_{{gpio.pin | upper}});
-
-  {% endfor %}
-{% endif %}
+  {%- endfor %}
+{%- endif %}
 }

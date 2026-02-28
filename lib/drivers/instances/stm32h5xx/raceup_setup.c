@@ -7,7 +7,6 @@ void SystemClock_Config(void)
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE0);
-
   while(!__HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY)) {}
 
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI | RCC_OSCILLATORTYPE_HSE;
@@ -15,7 +14,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSIDiv = RCC_HSI_DIV1;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-
+  
   // PLL1
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLL1_SOURCE_HSI;
@@ -27,6 +26,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1_VCIRANGE_2;
   RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1_VCORANGE_WIDE;
   RCC_OscInitStruct.PLL.PLLFRACN = 0;
+  
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -41,17 +41,15 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB3CLKDivider = RCC_HCLK_DIV1;
-
+  
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK)
   {
     Error_Handler();
   }
-
-  
   RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
   PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_FDCAN;
   PeriphClkInitStruct.FdcanClockSelection = RCC_FDCANCLKSOURCE_PLL2Q;
-  PeriphClkInitStruct.PLL2.PLL2Source = RCC_PLL2_SOURCE_HSE; 
+  PeriphClkInitStruct.PLL2.PLL2Source = RCC_PLL2_SOURCE_HSE;
   PeriphClkInitStruct.PLL2.PLL2M = 2;
   PeriphClkInitStruct.PLL2.PLL2N = 10;
   PeriphClkInitStruct.PLL2.PLL2P = 2;
@@ -67,20 +65,15 @@ void SystemClock_Config(void)
     Error_Handler();
   }
   
-  
   __HAL_FLASH_SET_PROGRAM_DELAY(FLASH_PROGRAMMING_DELAY_2);
 }
 
 void config_FDCAN(void) {
-
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-
   /* Enable global FDCAN clock */
   __HAL_RCC_FDCAN_CLK_ENABLE();
 
   /* Loop through all FDCAN instances (e.g., fdcan1, fdcan2) defined in YAML */
-  
-  
 
   /* ==============================================================================
    * FDCAN1 Hardware Setup (GPIO & NVIC)
@@ -99,21 +92,17 @@ void config_FDCAN(void) {
   
   // Assumes Rx and Tx are on the same GPIO bank for this implementation
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
-
+  
   /* Configure Interrupts (NVIC) */
-  
-  HAL_NVIC_SetPriority(FDCAN1_IT0_IRQn, 5, 0); // Rx Interrupts
+  HAL_NVIC_SetPriority(FDCAN1_IT0_IRQn, 5, 0);
+  // Rx Interrupts
   HAL_NVIC_EnableIRQ(FDCAN1_IT0_IRQn);
-  
-
-  
-  HAL_NVIC_SetPriority(FDCAN1_IT1_IRQn, 6, 0); // Error Interrupts
+  HAL_NVIC_SetPriority(FDCAN1_IT1_IRQn, 6, 0);
+  // Error Interrupts
   HAL_NVIC_EnableIRQ(FDCAN1_IT1_IRQn);
-  
 
   /* ==============================================================================
-   * FDCAN1 Peripheral Configuration 
-   * 
+   * FDCAN1 Peripheral Configuration
    * ============================================================================== */
 
   /* 1. Bit Timings (Calculated by clock_prescaler.py or fixed for now) */
@@ -123,83 +112,30 @@ void config_FDCAN(void) {
     .ts2   = 1,
     .sjw   = 1  /* Recommended default SJW */
   };
-
+  
   /* 2. Global Filter Configuration */
-  
-  
-    
-    
-    
-  
 
   /* 3. RX Interrupt Mode Configuration */
-  
-  
 
   /* 4. Peripheral Initialization */
   RUP_FDCAN_Init(FDCAN1, timing_fdcan1, RUP_FDCAN_REJECT, RUP_FDCAN_IT_NONE);
-
-  /* 5. Reception Filters */
   
-    
-    
-    
-    
-    
-    
-    
+  /* 5. Reception Filters */
     
   RUP_FDCAN_AddFilter(FDCAN1, RUP_FDCAN_FILTER_RANGE, RUP_FDCAN_FILTER_TO_RXFIFO0, 0x100, 0x110);
-  
-    
-    
-    
-    
-    
-    
-    
     
   RUP_FDCAN_AddFilter(FDCAN1, RUP_FDCAN_FILTER_MASK, RUP_FDCAN_FILTER_TO_RXFIFO1, 0x200, 0x7F0);
-  
 
   /* 6. Start Peripheral */
   RUP_FDCAN_Start(FDCAN1);
-
-  
-
-
 }
 
 void config_GPIO(void) {
-
-
-  
-  GPIO_InitTypeDef GPIO_InitStruct_F4 = {0};
-  __HAL_RCC_GPIOF_CLK_ENABLE();
-  GPIO_InitStruct_F4.Pin = GPIO_PIN_4;
-  GPIO_InitStruct_F4.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct_F4.Pull = GPIO_NOPULL;
-  GPIO_InitStruct_F4.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOF, &GPIO_InitStruct_F4);
-
-  
-  GPIO_InitTypeDef GPIO_InitStruct_G4 = {0};
-  __HAL_RCC_GPIOG_CLK_ENABLE();
-  GPIO_InitStruct_G4.Pin = GPIO_PIN_4;
-  GPIO_InitStruct_G4.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct_G4.Pull = GPIO_NOPULL;
-  GPIO_InitStruct_G4.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOG, &GPIO_InitStruct_G4);
-
-  
-  GPIO_InitTypeDef GPIO_InitStruct_B0 = {0};
-  __HAL_RCC_GPIOB_CLK_ENABLE();
-  GPIO_InitStruct_B0.Pin = GPIO_PIN_0;
-  GPIO_InitStruct_B0.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct_B0.Pull = GPIO_NOPULL;
-  GPIO_InitStruct_B0.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct_B0);
-
-  
-
+  GPIO_InitTypeDef GPIO_InitStruct_E3 = {0};
+  __HAL_RCC_GPIOE_CLK_ENABLE();
+  GPIO_InitStruct_E3.Pin = GPIO_PIN_3;
+  GPIO_InitStruct_E3.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct_E3.Pull = GPIO_NOPULL;
+  GPIO_InitStruct_E3.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct_E3);
 }
