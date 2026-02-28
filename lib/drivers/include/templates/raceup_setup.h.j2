@@ -1,0 +1,20 @@
+#include "main.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+{% for instance in modules.gpio %}
+#define {{ instance.name | upper }}_BANK  GPIO{{ instance.pin | pinbank }}
+#define {{ instance.name | upper }}_PIN   GPIO_PIN_{{ instance.pin | pinno }}
+{% endfor %}
+
+void SystemClock_Config(void);
+
+void config_FDCAN(void);
+
+void config_GPIO(void);
+
+#ifdef __cplusplus
+}
+#endif
