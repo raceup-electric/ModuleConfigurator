@@ -1,4 +1,4 @@
-project_name: "example_freertos_node"
+project_name: "smu_template"
 
 # ==============================================================================
 # 3. OS CONFIGURATION (NEW)
@@ -67,15 +67,25 @@ modules:
         enable: false
         pins:
           rx: B12
-          tx: B13
+          tx: B9
         interrupts:
           it0: { priority: 5, subpriority: 0 }
+          it1: { priority: 6, subpriority: 0 }
+          fifo_rx: fifo0,fifo1
         
+        # Types: RANGE, DUAL, MASK
+        # Configs: TO_RXFIFO0, TO_RXFIFO1, REJECT, RXFIFO0_HP, RXFIFO1_HP
         filters:
-          - type: dual
-            action: fifo0_hp # High Priority
-            id1: 0x010         # Emergency Message
-            id2: 0x020         # Critical Control
+          - type: global
+            action: fifo0
+          - type: range
+            action: fifo0
+            id1: 0x100
+            id2: 0x110
+          - type: mask
+            action: fifo1
+            id1: 0x200       # ID
+            id2: 0x7F0       # Mask
 
   gpio:
     - name: "user_led"
